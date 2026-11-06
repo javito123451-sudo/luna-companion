@@ -13,7 +13,7 @@ import { runDailyJobs } from "../src/lib/cron";
 import { lastLLMRequest } from "../src/lib/llm";
 import * as llm from "../src/lib/llm";
 import { SAFETY_BLOCK, detectMinorSignal, detectCrisis, detectProhibitedRequest, parseBirthDate } from "../src/lib/safety";
-import { resetSettingsCache } from "../src/lib/settings";
+import { freeLimitFor, resetSettingsCache } from "../src/lib/settings";
 
 type Call = { method: string; payload: any };
 const calls: Call[] = [];
@@ -97,7 +97,9 @@ async function main() {
   await q(`TRUNCATE telegram_updates, support_tickets, safety_flags, unlocked_content, credit_transactions, payments, credit_batches, conversation_messages RESTART IDENTITY CASCADE`);
   await q(`DELETE FROM content_assets`);
   await q(`DELETE FROM users`);
-  await q(`UPDATE app_settings SET value = '15' WHERE key = 'free_messages_per_day'`);
+  await q(`UPDATE app_settings SET value = '5' WHERE key = 'free_messages_per_day'`);
+  await q(`UPDATE app_settings SET value = '15' WHERE key = 'free_messages_first_day'`);
+  await q(`UPDATE app_settings SET value = '3' WHERE key = 'credits_per_message'`);
   resetSettingsCache();
 
   await test("Unidad: detectores de seguridad y fecha", async () => {
@@ -130,6 +132,13 @@ async function main() {
     const u = await userRow();
     assert.ok(u.age_verified_at && u.terms_accepted_at);
     assert.equal(new Date(u.birth_date).getUTCFullYear(), 1990);
+  });
+
+  await test("Cuota gratuita: 15 el día de registro, 5 los días siguientes", async () => {
+    const s = { freeMessagesPerDay: 5, freeMessagesFirstDay: 15, creditsPerMessage: 3, messageRetentionDays: 90, creditExpiryMonths: 12 };
+    assert.equal(freeLimitFor({ age_verified_at: new Date().toISOString() }, s), 15);
+    assert.equal(freeLimitFor({ age_verified_at: new Date(Date.now() - 3 * 864e5).toISOString() }, s), 5);
+    assert.equal(freeLimitFor({ age_verified_at: null }, s), 5);
   });
 
   await test("Fecha de nacimiento inmutable (trigger en BD)", async () => {
@@ -166,7 +175,7 @@ async function main() {
     assert.ok(textsSince(n).some((t) => /Has usado tus mensajes gratuitos de hoy/.test(t)));
     n = calls.length;
     await sendText("¿sigues ahí?");
-    assert.match(textsSince(n)[0], /necesitas 2 créditos por mensaje/);
+    assert.match(textsSince(n)[0], /necesitas 3 créditos por mensaje/);
     assert.equal(await getBalance(u.id), 0);
   });
 
