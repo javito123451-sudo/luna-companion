@@ -18,3 +18,12 @@ DB_DRIVER=pg DATABASE_URL=postgres://... LLM_MOCK=1 NEXT_PUBLIC_APP_URL=https://
 
 ## Variables
 Ver `.env.example`.
+
+## Puesta en marcha (un comando)
+Requisitos: Node 20+, git, GitHub CLI (`gh auth login`) y Vercel CLI (`npm i -g vercel` y `vercel login`).
+
+```
+node scripts/setup.mjs
+```
+Enlaza el proyecto de Vercel, limpia variables obsoletas, crea y conecta el Blob store privado,
+crea el repo privado en GitHub, hace push, conecta Git con Vercel y despliega a producción.
