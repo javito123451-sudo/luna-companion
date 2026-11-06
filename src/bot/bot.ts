@@ -6,7 +6,7 @@ import { Asset, deliverUnlocked, sendAsset } from "../lib/content";
 import { Companion, generateReply, HistoryMessage } from "../lib/llm";
 import { listActivePacks, packTotal, processSuccessfulPayment, refundPayment, sendPackInvoice, validatePreCheckout } from "../lib/payments";
 import { detectCrisis, detectMinorSignal, detectProhibitedRequest, parseBirthDate } from "../lib/safety";
-import { getSettings, legalUrl } from "../lib/settings";
+import { freeLimitFor, getSettings, legalUrl } from "../lib/settings";
 import { MENU, T } from "../lib/texts";
 import {
   canUseContent,
@@ -87,9 +87,9 @@ async function showBalance(ctx: Ctx, u: User) {
     getBalance(u.id),
     listActiveBatches(u.id),
     listRecentTransactions(u.id, 8),
-    freeLeftToday(u.id, s.freeMessagesPerDay),
+    freeLeftToday(u.id, freeLimitFor(u, s)),
   ]);
-  await ctx.reply(T.balance({ total, batches, txs, freeLeft, freePerDay: s.freeMessagesPerDay }), {
+  await ctx.reply(T.balance({ total, batches, txs, freeLeft, freePerDay: freeLimitFor(u, s) }), {
     ...HTML,
     reply_markup: new InlineKeyboard().text("Recargar", "shop"),
   });
@@ -169,7 +169,7 @@ async function handleChat(ctx: Ctx, text: string) {
   }
 
   const s = await getSettings();
-  const freeLeft = await consumeFreeMessage(u.id, s.freeMessagesPerDay);
+  const freeLeft = await consumeFreeMessage(u.id, freeLimitFor(u, s));
   let allocations: { batchId: string; amount: number }[] | null = null;
   if (freeLeft === null) {
     const r = await tx((c) => spendCredits(c, u.id, s.creditsPerMessage, "spend_message", { note: comp.slug }));

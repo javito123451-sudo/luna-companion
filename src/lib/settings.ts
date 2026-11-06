@@ -2,14 +2,16 @@ import { q } from "./db";
 
 export type Settings = {
   freeMessagesPerDay: number;
+  freeMessagesFirstDay: number;
   creditsPerMessage: number;
   messageRetentionDays: number;
   creditExpiryMonths: number;
 };
 
 const DEFAULTS: Settings = {
-  freeMessagesPerDay: 15,
-  creditsPerMessage: 2,
+  freeMessagesPerDay: 5,
+  freeMessagesFirstDay: 15,
+  creditsPerMessage: 3,
   messageRetentionDays: 90,
   creditExpiryMonths: 12,
 };
@@ -26,6 +28,7 @@ export async function getSettings(): Promise<Settings> {
   };
   const value: Settings = {
     freeMessagesPerDay: pick("free_messages_per_day", DEFAULTS.freeMessagesPerDay),
+    freeMessagesFirstDay: pick("free_messages_first_day", DEFAULTS.freeMessagesFirstDay),
     creditsPerMessage: pick("credits_per_message", DEFAULTS.creditsPerMessage),
     messageRetentionDays: pick("message_retention_days", DEFAULTS.messageRetentionDays),
     creditExpiryMonths: pick("credit_expiry_months", DEFAULTS.creditExpiryMonths),
@@ -44,3 +47,11 @@ export function appUrl(): string {
 }
 
 export const legalUrl = (slug: "terminos" | "privacidad" | "reembolsos") => `${appUrl()}/legal/${slug}`;
+
+const madridDay = (d: Date | string) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "Europe/Madrid" });
+
+/** Cuota gratuita del día: más generosa el día en que el usuario se registra (verifica su edad). */
+export function freeLimitFor(user: { age_verified_at: string | null }, s: Settings): number {
+  const firstDay = !!user.age_verified_at && madridDay(user.age_verified_at) === madridDay(new Date());
+  return firstDay ? Math.max(s.freeMessagesFirstDay, s.freeMessagesPerDay) : s.freeMessagesPerDay;
+}
