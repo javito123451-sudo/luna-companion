@@ -254,6 +254,23 @@ function Payments({ api }: { api: ApiFn }) {
 function BotPanel({ api }: { api: ApiFn }) {
   const [info, setInfo] = useState<any>(null);
   const [msg, setMsg] = useState("");
+  const [tests, setTests] = useState<any[]>([]);
+  async function testCompanions() {
+    setTests([]);
+    const { companions } = await api("/api/admin/companions");
+    for (const c of companions) {
+      try {
+        const r = await api("/api/admin/llm-test", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ slug: c.slug, message: "Hola, preséntate en dos frases: ¿quién eres y cómo eres?" }),
+        });
+        setTests((t) => [...t, r]);
+      } catch (e: any) {
+        setTests((t) => [...t, { slug: c.slug, reply: `Error: ${e.message}` }]);
+      }
+    }
+  }
   const load = useCallback(() => {
     api("/api/admin/setup").then(setInfo).catch((e) => setMsg(e.message));
   }, [api]);
@@ -268,8 +285,17 @@ function BotPanel({ api }: { api: ApiFn }) {
   }
   return (
     <>
-      <button onClick={configure}>Configurar webhook y comandos</button>
+      <div className="row">
+        <button onClick={configure}>Configurar webhook y comandos</button>
+        <button className="ghost" onClick={testCompanions}>Probar personalidad de las companions</button>
+      </div>
       {msg && <p className="muted">{msg}</p>}
+      {tests.length > 0 && (
+        <table>
+          <thead><tr><th>Companion</th><th>Prompt de BD</th><th>Bloque seguridad</th><th>Respuesta</th></tr></thead>
+          <tbody>{tests.map((t) => <tr key={t.slug}><td>{t.slug}</td><td>{String(t.promptFromDb ?? "—")}</td><td>{String(t.safetyBlockIncluded ?? "—")}</td><td>{t.reply}</td></tr>)}</tbody>
+        </table>
+      )}
       {info && <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(info, null, 2)}</pre>}
     </>
   );
