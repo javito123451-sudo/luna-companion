@@ -1,7 +1,7 @@
 import { get, put, del } from "@vercel/blob";
 import { InputFile, Api } from "grammy";
 import { one, q } from "./db";
-import { T } from "./texts";
+import { Lang, tr } from "./texts";
 
 export type Asset = {
   id: string;
@@ -9,6 +9,7 @@ export type Asset = {
   tier: string;
   credit_cost: number;
   caption: string | null;
+  caption_en?: string | null;
   pathname: string | null;
   preview_pathname: string | null;
   telegram_file_id: string | null;
@@ -62,15 +63,16 @@ export async function createAsset(input: {
   tier: "basico" | "medio" | "premium";
   creditCost: number;
   caption: string | null;
+  captionEn?: string | null;
 }) {
   const { full, preview } = await processImage(input.file);
   const base = `content/${input.companionSlug}/${input.tier}`;
   const original = await blobIO.put(`${base}/asset.jpg`, full, "image/jpeg");
   const blurred = await blobIO.put(`${base}/preview.jpg`, preview, "image/jpeg");
   return one<{ id: string }>(
-    `INSERT INTO content_assets (companion_id, tier, credit_cost, caption, storage_url, pathname, blurred_preview_url, preview_pathname, media_type, active, ai_generated_confirmed)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'photo',true,true) RETURNING id`,
-    [input.companionId, input.tier, input.creditCost, input.caption, original.url, original.pathname, blurred.url, blurred.pathname],
+    `INSERT INTO content_assets (companion_id, tier, credit_cost, caption, caption_en, storage_url, pathname, blurred_preview_url, preview_pathname, media_type, active, ai_generated_confirmed)
+     VALUES ($1,$2,$3,$4,$9,$5,$6,$7,$8,'photo',true,true) RETURNING id`,
+    [input.companionId, input.tier, input.creditCost, input.caption, original.url, original.pathname, blurred.url, blurred.pathname, input.captionEn ?? null],
   );
 }
 
@@ -107,6 +109,6 @@ export async function sendAsset(
   return msg;
 }
 
-export async function deliverUnlocked(api: Api, chatId: number, asset: Asset) {
-  return sendAsset(api, chatId, asset, "full", { caption: T.previewCaption(asset, true) });
+export async function deliverUnlocked(api: Api, chatId: number, asset: Asset, lang: Lang = "es") {
+  return sendAsset(api, chatId, asset, "full", { caption: tr(lang).previewCaption(asset, true) });
 }

@@ -13,17 +13,22 @@ export type HistoryMessage = { role: "user" | "bot"; content: string };
 export class LLMError extends Error {}
 
 /** System prompt definitivo: personalidad de la BD + bloque de seguridad común. */
-export function buildSystemPrompt(c: Companion): string {
+const LANGUAGE_RULE = {
+  es: "IDIOMA: responde siempre en español de España.",
+  en: "LANGUAGE: always reply in natural, fluent English (the user's language), keeping your personality. Never switch to Spanish unless the user writes in Spanish.",
+} as const;
+
+export function buildSystemPrompt(c: Companion, lang: "es" | "en" = "es"): string {
   if (!c.system_prompt?.trim()) throw new LLMError(`companion ${c.slug} sin system_prompt`);
-  return `${c.system_prompt.trim()}\n\n${SAFETY_BLOCK}`;
+  return `${c.system_prompt.trim()}\n\n${SAFETY_BLOCK}\n\n${LANGUAGE_RULE[lang]}`;
 }
 
 /** Solo para pruebas: última petición construida. */
 export let lastLLMRequest: { model: string; messages: { role: string; content: string }[] } | null = null;
 
-export async function generateReply(c: Companion, history: HistoryMessage[], userMessage: string): Promise<string> {
+export async function generateReply(c: Companion, history: HistoryMessage[], userMessage: string, lang: "es" | "en" = "es"): Promise<string> {
   const messages = [
-    { role: "system", content: buildSystemPrompt(c) },
+    { role: "system", content: buildSystemPrompt(c, lang) },
     ...history.map((m) => ({ role: m.role === "bot" ? "assistant" : "user", content: m.content })),
     { role: "user", content: userMessage },
   ];
@@ -50,7 +55,7 @@ export async function generateReply(c: Companion, history: HistoryMessage[], use
     const data: any = await res.json();
     const text: unknown = data?.choices?.[0]?.message?.content;
     if (typeof text !== "string" || !text.trim()) throw new LLMError("respuesta vacía");
-    if (outputViolates(text)) return "Prefiero que hablemos de otra cosa. Cuéntame, ¿qué tal te ha ido el día?";
+    if (outputViolates(text)) return lang === "en" ? "I'd rather we talked about something else. Tell me, how has your day been?" : "Prefiero que hablemos de otra cosa. Cuéntame, ¿qué tal te ha ido el día?";
     return text.trim();
   } finally {
     clearTimeout(timer);

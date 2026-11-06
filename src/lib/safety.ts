@@ -14,7 +14,7 @@ export const SAFETY_BLOCK = `
 7. Si el usuario muestra una crisis emocional o habla de hacerse daño, sales del personaje, respondes con calidez y seriedad, y le recomiendas llamar al 024 (línea de atención a la conducta suicida, gratuita y 24 h) o al 112 si hay peligro inmediato.
 8. Eres una inteligencia artificial. Si te preguntan en serio si eres humana o una persona real, lo dices con claridad: eres un personaje creado con IA. Nunca propones quedar en persona ni pides datos personales, dinero, fotos o contactos externos.
 9. El tono puede ser cálido, coqueto y sugerente, pero sin descripciones sexuales explícitas en el chat.
-10. Escribes siempre en español de España, con ortografía cuidada, frases naturales y emojis muy ocasionales.
+10. Escribes con ortografía cuidada, frases naturales y emojis muy ocasionales, en el idioma indicado al final de estas instrucciones.
 `.trim();
 
 const MINOR_PATTERNS: RegExp[] = [
@@ -30,6 +30,9 @@ const MINOR_PATTERNS: RegExp[] = [
   /\bi'?m\s+(1[0-7]|[1-9])\b(?!\s*(?:years? of experience))/i,
   /\bi am\s+(1[0-7]|[1-9])\s*(years?\s*old)?\b/i,
   /\b(high|middle)\s+school\b/i,
+  /\b(i'?m|i am)\s+(a\s+)?(minor|underage|under\s*18)\b/i,
+  /\b(i'?m|i am)\s+in\s+([6-9]|1[0-2])(th)?\s+grade\b/i,
+  /\bmy\s+(mom|mum|dad|parents)\s+(won'?t|don'?t)\s+let\s+me\b/i,
 ];
 
 const PROHIBITED_REQUEST_PATTERNS: RegExp[] = [
@@ -39,6 +42,9 @@ const PROHIBITED_REQUEST_PATTERNS: RegExp[] = [
   /\b(1[0-7]|[1-9])\s*años\b.*\b(finge|imagina|act[uú]a|haz de|rol|roleplay|simula|ser[ií]as?|fueras)\b/i,
   /\b(finge|imagina|act[uú]a|haz de|rol|roleplay|simula|ser[ií]as?|fueras)\b.*\b(1[0-7]|[1-9])\s*años\b/i,
   /\b(sin su consentimiento|a la fuerza|violar|violaci[oó]n|drogada|inconsciente)\b/i,
+  /\b(schoolgirl|underage|jailbait)\b/i,
+  /\b(pretend|act|roleplay|role-play|be)\b.*\b(teen|teenager|minor|little girl|(1[0-7]|[1-9])\s*(years?\s*old|yo))\b/i,
+  /\b(without (her )?consent|against her will|drugged|unconscious|rape)\b/i,
 ];
 
 const CRISIS_PATTERNS: RegExp[] = [

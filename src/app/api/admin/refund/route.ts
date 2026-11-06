@@ -1,6 +1,6 @@
 import { isAdmin, unauthorized } from "@/lib/admin-auth";
 import { refundPayment } from "@/lib/payments";
-import { T } from "@/lib/texts";
+import { tr } from "@/lib/texts";
 import { getBot } from "@/bot/bot";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   try {
     const r = await refundPayment(api, chargeId, reason);
     if (r.status === "refunded") {
-      await api.sendMessage(r.telegramId, T.refundNotice(r.creditsReverted, r.stars), { parse_mode: "HTML" }).catch(() => undefined);
+      await api.sendMessage(r.telegramId, tr(r.language).refundNotice(r.creditsReverted, r.stars), { parse_mode: "HTML" }).catch(() => undefined);
     }
     return Response.json({ ok: true, ...r });
   } catch (e: any) {

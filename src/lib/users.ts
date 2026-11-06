@@ -13,18 +13,20 @@ export type User = {
   free_msgs_day: string | null;
   free_msgs_used: number;
   terms_accepted_at: string | null;
+  language: string;
 };
 
-export async function upsertUser(from: { id: number; username?: string; first_name?: string }): Promise<User> {
+export async function upsertUser(from: { id: number; username?: string; first_name?: string; language?: string }): Promise<User> {
   const row = await one<User>(
-    `INSERT INTO users (telegram_id, telegram_username, first_name, last_seen_at)
-     VALUES ($1, $2, $3, now())
+    `INSERT INTO users (telegram_id, telegram_username, first_name, language, last_seen_at)
+     VALUES ($1, $2, $3, $4, now())
      ON CONFLICT (telegram_id) DO UPDATE SET
        telegram_username = CASE WHEN users.data_erased_at IS NULL OR users.age_verified_at IS NOT NULL THEN EXCLUDED.telegram_username ELSE users.telegram_username END,
        first_name = CASE WHEN users.data_erased_at IS NULL OR users.age_verified_at IS NOT NULL THEN EXCLUDED.first_name ELSE users.first_name END,
+       language = EXCLUDED.language,
        last_seen_at = now()
      RETURNING *`,
-    [from.id, from.username ?? null, from.first_name ?? null],
+    [from.id, from.username ?? null, from.first_name ?? null, from.language === "en" ? "en" : "es"],
   );
   return normalize(row!);
 }
