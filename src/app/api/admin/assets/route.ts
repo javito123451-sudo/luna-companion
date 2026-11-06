@@ -9,7 +9,6 @@ export const maxDuration = 60;
 const TIERS = ["basico", "medio", "premium"] as const;
 const MAX_BYTES = 15 * 1024 * 1024;
 
-/** Lista de assets con ventas. */
 export async function GET(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const rows = await q(
@@ -22,7 +21,6 @@ export async function GET(req: Request) {
   return Response.json({ assets: rows });
 }
 
-/** Subida multipart: file, companion (slug), tier, credit_cost, caption, ai_confirm=yes. */
 export async function POST(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const form = await req.formData();
@@ -56,7 +54,6 @@ export async function POST(req: Request) {
   }
 }
 
-/** Activar / desactivar o cambiar coste. */
 export async function PATCH(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const body = await req.json().catch(() => ({}));

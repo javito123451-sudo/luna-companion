@@ -5,7 +5,6 @@ import { configureBot, getBot } from "@/bot/bot";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** POST: registra webhook (con secret y allowed_updates), comandos, descripción y botón de menú. */
 export async function POST(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const url = `${appUrl()}/api/telegram/webhook`;
@@ -13,7 +12,6 @@ export async function POST(req: Request) {
   return GET(req);
 }
 
-/** GET: estado del webhook (sin secretos). */
 export async function GET(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const api = getBot().api;

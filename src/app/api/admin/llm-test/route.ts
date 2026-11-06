@@ -7,7 +7,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Prueba de personalidad: POST { slug, message } → respuesta real del modelo con el system_prompt de BD. */
 export async function POST(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const { slug, message } = await req.json().catch(() => ({}));

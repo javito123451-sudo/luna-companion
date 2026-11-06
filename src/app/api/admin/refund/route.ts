@@ -6,7 +6,6 @@ import { getBot } from "@/bot/bot";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** POST { charge_id, reason } → refundStarPayment + reversión de créditos + transacción 'refund'. */
 export async function POST(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const body = await req.json().catch(() => ({}));

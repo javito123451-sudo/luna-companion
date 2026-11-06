@@ -42,7 +42,6 @@ async function activeCompanion(u: User): Promise<(Companion & { tagline: string 
   return one(`SELECT * FROM companions WHERE id = $1 AND active = 1`, [u.active_companion_id]);
 }
 
-// ── Pantallas ──────────────────────────────────────────────────────────────
 async function showWelcome(ctx: Ctx) {
   await ctx.reply(T.welcome(), { ...HTML, reply_markup: new InlineKeyboard().text("Continuar", "onb:go") });
 }
@@ -131,7 +130,6 @@ async function askCompanion(ctx: Ctx) {
   await showCatalog(ctx);
 }
 
-// ── Gate común ─────────────────────────────────────────────────────────────
 /** Devuelve true si el usuario puede seguir; si no, responde y devuelve false. */
 async function gate(ctx: Ctx, opts: { allowUnverified?: boolean } = {}): Promise<boolean> {
   const u = ctx.user!;
@@ -150,7 +148,6 @@ async function gate(ctx: Ctx, opts: { allowUnverified?: boolean } = {}): Promise
   return true;
 }
 
-// ── Chat ───────────────────────────────────────────────────────────────────
 async function handleChat(ctx: Ctx, text: string) {
   const u = ctx.user!;
   const comp = await activeCompanion(u);
@@ -172,7 +169,6 @@ async function handleChat(ctx: Ctx, text: string) {
   }
 
   const s = await getSettings();
-  // 1) Cobro previo: mensaje gratuito o créditos (FIFO, atómico).
   const freeLeft = await consumeFreeMessage(u.id, s.freeMessagesPerDay);
   let allocations: { batchId: string; amount: number }[] | null = null;
   if (freeLeft === null) {
@@ -186,7 +182,6 @@ async function handleChat(ctx: Ctx, text: string) {
     allocations = r.allocations;
   }
 
-  // 2) Respuesta de la companion con su system_prompt de BD + bloque de seguridad.
   await ctx.replyWithChatAction("typing").catch(() => undefined);
   const history = (
     await q<{ role: "user" | "bot"; content: string }>(
@@ -217,14 +212,13 @@ async function handleChat(ctx: Ctx, text: string) {
   }
 }
 
-// ── Desbloqueo ─────────────────────────────────────────────────────────────
 async function handleUnlockRequest(ctx: Ctx, assetId: string) {
   const u = ctx.user!;
   if (!canUseContent(u)) return ctx.reply(T.contentRestricted());
   const asset = await one<Asset>(`SELECT * FROM content_assets WHERE id = $1 AND active`, [assetId]);
   if (!asset) return ctx.reply("Este contenido ya no está disponible.");
   const owned = await one(`SELECT 1 FROM unlocked_content WHERE user_id = $1 AND content_asset_id = $2`, [u.id, assetId]);
-  if (owned) return deliverUnlocked(ctx.api, ctx.chat!.id, asset); // reenvío gratuito
+  if (owned) return deliverUnlocked(ctx.api, ctx.chat!.id, asset);
   const balance = await getBalance(u.id);
   if (balance < asset.credit_cost) {
     return ctx.reply(T.unlockInsufficient(asset.credit_cost, balance), { ...HTML, reply_markup: new InlineKeyboard().text("Recargar", "shop") });
@@ -265,7 +259,6 @@ async function handleUnlockConfirm(ctx: Ctx, assetId: string) {
   if (result.kind === "unlocked") await ctx.reply(T.unlockDone(result.balance), HTML);
 }
 
-// ── Construcción del bot ───────────────────────────────────────────────────
 export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testEnv?: boolean } = {}) {
   const token = opts.token ?? process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("Falta TELEGRAM_BOT_TOKEN");
@@ -274,14 +267,12 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     client: { environment: opts.testEnv ?? process.env.TELEGRAM_TEST_ENV === "1" ? "test" : "prod" },
   });
 
-  // Deduplicación de reintentos del webhook.
   bot.use(async (ctx, next) => {
     const r = await one(`INSERT INTO telegram_updates (update_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING 1 AS ok`, [ctx.update.update_id]);
     if (!r) return;
     await next();
   });
 
-  // pre_checkout_query: responder en < 10 s, antes de cualquier otra carga.
   bot.on("pre_checkout_query", async (ctx) => {
     const pq = ctx.preCheckoutQuery;
     let verdict;
@@ -295,7 +286,6 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     else await ctx.answerPreCheckoutQuery(false, { error_message: verdict.error });
   });
 
-  // Carga del usuario.
   bot.use(async (ctx, next) => {
     if (ctx.from && !ctx.from.is_bot) ctx.user = await upsertUser(ctx.from);
     await next();
@@ -325,7 +315,6 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     }
   });
 
-  // ── Comandos ──
   bot.command("start", async (ctx) => {
     const u = ctx.user!;
     if (u.is_blocked) return ctx.reply(T.blocked(), HTML);
@@ -368,7 +357,6 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     ctx.reply(T.eraseConfirm(), { ...HTML, reply_markup: new InlineKeyboard().text("Sí, eliminar mis datos", "erase:yes").text("Cancelar", "erase:no") }),
   );
 
-  // ── Botones inline ──
   bot.on("callback_query:data", async (ctx) => {
     const data = ctx.callbackQuery.data;
     const u = ctx.user!;
@@ -418,7 +406,6 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     }
   });
 
-  // ── Texto libre ──
   bot.on("message:text", async (ctx) => {
     const u = ctx.user!;
     const text = ctx.message.text.trim();

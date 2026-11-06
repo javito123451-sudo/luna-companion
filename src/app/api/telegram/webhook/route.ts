@@ -15,7 +15,6 @@ export async function POST(req: Request) {
     return await handle(req);
   } catch (err) {
     console.error("[webhook] error", err);
-    // 200 para que Telegram no reintente indefinidamente un update que falla siempre.
     return new Response("OK", { status: 200 });
   }
 }

@@ -8,7 +8,6 @@ export type Queryable = {
 let pool: any = null;
 
 function createPool() {
-  // En tests locales se usa `pg` contra un Postgres local (DB_DRIVER=pg).
   if (process.env.DB_DRIVER === "pg") {
     // eslint-disable-next-line no-eval
     const { Pool } = eval("require")("pg");
