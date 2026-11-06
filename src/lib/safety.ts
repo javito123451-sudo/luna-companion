@@ -22,7 +22,7 @@ const MINOR_PATTERNS: RegExp[] = [
   /\b(soy|todav[ií]a soy|a[uú]n soy)\s+menor\b/i,
   /\bmenor de edad\b.*\b(soy|yo)\b|\b(soy|yo)\b.*\bmenor de edad\b/i,
   /\b(voy|estoy|vengo|vuelvo)\s+(?:a(?:l)?|en(?:\s+el)?|del?)\s+(?:la\s+|el\s+)?(cole|colegio|insti|instituto|primaria|secundaria|la eso)\b/i,
-  /\b(mi|el)\s+(cole|colegio|insti|instituto)\b/i,
+  /\bmi\s+(cole|colegio|insti|instituto)\b/i,
   /\b(1|2|3|4|primero|segundo|tercero|cuarto)\s*(º|o)?\s*de\s*(la\s+)?eso\b/i,
   /\b(1|2|primero|segundo)\s*(º|o)?\s*de\s*bach(iller(ato)?)?\b/i,
   /\bmis padres no me dejan\b/i,
