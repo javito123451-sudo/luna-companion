@@ -185,10 +185,14 @@ function Content({ api, secret }: { api: ApiFn; secret: string }) {
           <input name="credit_cost" type="number" min={1} max={10000} placeholder="Coste en créditos" required />
         </div>
         <div className="row">
-          <input name="caption" placeholder="Descripción breve y discreta" maxLength={500} style={{ flex: 1 }} />
+          <input name="caption" placeholder="Descripción breve y discreta (español)" maxLength={500} style={{ flex: 1 }} />
+        </div>
+        <div className="row">
+          <input name="caption_en" placeholder="Short description (English, optional)" maxLength={500} style={{ flex: 1 }} />
         </div>
         <div className="row">
           <input name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
+          <span className="muted">JPG, PNG o WebP · máximo 4 MB</span>
         </div>
         <label className="row">
           <input name="ai_confirm" type="checkbox" value="yes" required />

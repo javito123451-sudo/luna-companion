@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const TIERS = ["basico", "medio", "premium"] as const;
-const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024; // límite de cuerpo de las funciones de Vercel (4,5 MB)
 
 export async function GET(req: Request) {
   if (!isAdmin(req)) return unauthorized();
@@ -29,10 +29,11 @@ export async function POST(req: Request) {
   const tier = String(form.get("tier") ?? "") as (typeof TIERS)[number];
   const cost = Number(form.get("credit_cost"));
   const caption = String(form.get("caption") ?? "").trim().slice(0, 500) || null;
+  const captionEn = String(form.get("caption_en") ?? "").trim().slice(0, 500) || null;
   if (form.get("ai_confirm") !== "yes")
     return Response.json({ error: "Debes confirmar que el contenido es 100 % generado por IA y representa a un personaje ficticio adulto." }, { status: 400 });
   if (!(file instanceof File) || !file.size) return Response.json({ error: "Falta el archivo" }, { status: 400 });
-  if (file.size > MAX_BYTES) return Response.json({ error: "Máximo 15 MB" }, { status: 400 });
+  if (file.size > MAX_BYTES) return Response.json({ error: "Máximo 4 MB" }, { status: 400 });
   if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return Response.json({ error: "Formato admitido: JPG, PNG o WebP" }, { status: 400 });
   if (!TIERS.includes(tier)) return Response.json({ error: "Tier inválido" }, { status: 400 });
   if (!Number.isInteger(cost) || cost < 1 || cost > 10000) return Response.json({ error: "Coste inválido" }, { status: 400 });
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
       tier,
       creditCost: cost,
       caption,
+      captionEn,
     });
     return Response.json({ ok: true, id: created?.id });
   } catch (e: any) {

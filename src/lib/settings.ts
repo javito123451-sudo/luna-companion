@@ -46,7 +46,9 @@ export function appUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
-export const legalUrl = (slug: "terminos" | "privacidad" | "reembolsos") => `${appUrl()}/legal/${slug}`;
+const LEGAL_EN = { terminos: "terms", privacidad: "privacy", reembolsos: "refunds" } as const;
+export const legalUrl = (slug: "terminos" | "privacidad" | "reembolsos", lang: "es" | "en" = "es") =>
+  `${appUrl()}/legal/${lang === "en" ? LEGAL_EN[slug] : slug}`;
 
 const madridDay = (d: Date | string) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "Europe/Madrid" });
 

@@ -48,7 +48,8 @@ bot.api.config.use(async (_prev, method, payload: any) => {
 
 let updateId = 1000;
 const TG = 900001;
-const from = (id = TG) => ({ id, is_bot: false, first_name: "Paco", username: "paco_test" });
+const EN_USER = 900010;
+const from = (id = TG) => ({ id, is_bot: false, first_name: "Paco", username: "paco_test", language_code: id === EN_USER ? "en" : "es" });
 const chat = (id = TG) => ({ id, type: "private" as const, first_name: "Paco" });
 
 async function sendText(text: string, id = TG) {
@@ -447,6 +448,39 @@ async function main() {
     const n = calls.length;
     await sendText("hola", OTHER);
     assert.match(textsSince(n)[0], /Bienvenido/);
+  });
+
+  await test("Inglés: usuario con Telegram en inglés recibe todo en inglés (onboarding, menú, IA, tienda, factura)", async () => {
+    let n = calls.length;
+    await sendText("/start", EN_USER);
+    assert.match(textsSince(n)[0], /Welcome to Luna Companions/);
+    await press("onb:go", EN_USER);
+    assert.match(textsSince(n).at(-1)!, /Adults only/);
+    assert.match(textsSince(n).at(-1)!, /\/legal\/terms/);
+    n = calls.length;
+    await sendText("15/06/1990", EN_USER);
+    const t = textsSince(n).join("\n");
+    assert.match(t, /fictional characters created with artificial intelligence/);
+    assert.match(t, /Choose who you'd like to talk to/);
+    assert.match(t, /Affectionate, warm and always ready to listen/);
+    const menu = calls.slice(n).find((c) => c.payload?.reply_markup?.keyboard)!.payload.reply_markup.keyboard.flat().map((b: any) => b.text ?? b);
+    assert.deepEqual(menu, ["Chat", "Gallery", "Shop", "Balance", "Change companion", "Help"]);
+    n = calls.length;
+    await press("comp:luna", EN_USER);
+    assert.match(textsSince(n).join("\n"), /Hi! I'm Luna/);
+    await sendText("Hi Luna", EN_USER);
+    assert.match(llm.lastLLMRequest!.messages[0].content, /LANGUAGE: always reply in natural, fluent English/);
+    n = calls.length;
+    await sendText("Shop", EN_USER);
+    assert.match(textsSince(n)[0], /Credits have no monetary value/);
+    await press("buy:popular", EN_USER);
+    const inv = lastOf("sendInvoice")!.payload;
+    assert.equal(inv.title, "Luna Companions · Popular pack");
+    assert.deepEqual(inv.prices, [{ label: "330 credits", amount: 300 }]);
+    await preCheckout(inv.payload, 1, EN_USER);
+    assert.match(lastOf("answerPreCheckoutQuery")!.payload.error_message, /couldn't validate your order/);
+    const u = await userRow(EN_USER);
+    assert.equal(u.language, "en");
   });
 
   await test("Comandos legales e /info disponibles", async () => {

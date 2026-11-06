@@ -5,23 +5,24 @@ export const dynamic = "force-static";
 export const revalidate = 3600;
 
 const UPDATED = "6 de noviembre de 2026";
+const UPDATED_EN = "6 November 2026";
 
-function Owner() {
+function Owner({ en = false }: { en?: boolean }) {
   const name = process.env.LEGAL_OWNER_NAME;
   const nif = process.env.LEGAL_OWNER_NIF;
   const address = process.env.LEGAL_OWNER_ADDRESS;
   const email = process.env.LEGAL_CONTACT_EMAIL;
   return (
     <ul className="legal">
-      <li>Titular: {name ?? "—"}</li>
-      <li>NIF: {nif ?? "—"}</li>
-      <li>Domicilio: {address ?? "—"}</li>
-      <li>Contacto: {email ?? "comando /paysupport del bot"}</li>
+      <li>{en ? "Owner" : "Titular"}: {name ?? "—"}</li>
+      <li>{en ? "Tax ID (NIF)" : "NIF"}: {nif ?? "—"}</li>
+      <li>{en ? "Address" : "Domicilio"}: {address ?? "—"}</li>
+      <li>{en ? "Contact" : "Contacto"}: {email ?? (en ? "/paysupport command in the bot" : "comando /paysupport del bot")}</li>
     </ul>
   );
 }
 
-const pages: Record<string, { title: string; body: () => JSX.Element }> = {
+const pages: Record<string, { title: string; en?: boolean; body: () => JSX.Element }> = {
   terminos: {
     title: "Términos de uso",
     body: () => (
@@ -142,6 +143,127 @@ const pages: Record<string, { title: string; body: () => JSX.Element }> = {
       </>
     ),
   },
+  terms: {
+    title: "Terms of Use",
+    en: true,
+    body: () => (
+      <>
+        <h2>1. Who we are</h2>
+        <p>Luna Companions is a digital entertainment service provided through a Telegram bot.</p>
+        <Owner en />
+        <h2>2. Adults only</h2>
+        <p>
+          The service is reserved for people aged 18 or over. Before accessing it you must enter your date of birth, which cannot be
+          changed afterwards. If you state that you are a minor, or if we detect reasonable signs that you are, the account is blocked from
+          content and purchases and placed under review.
+        </p>
+        <h2>3. Artificial intelligence characters</h2>
+        <p>
+          All companions are fictional adult characters (aged 25 or over) created with artificial intelligence. They are not real people
+          and are not based on real people. Conversations and images are AI-generated and may contain errors. Nothing they say constitutes
+          professional advice of any kind.
+        </p>
+        <h2>4. Acceptable use</h2>
+        <ul className="legal">
+          <li>No content or request involving minors, childlike features or roles is allowed.</li>
+          <li>No non-consensual or violent content, content about real people, or content that encourages self-harm or illegal activities is allowed.</li>
+          <li>Attempting to bypass safety measures, reselling access or extracting content by automated means is not allowed.</li>
+        </ul>
+        <p>We may suspend or close accounts that breach these rules.</p>
+        <h2>5. Credits and payments</h2>
+        <ul className="legal">
+          <li>Credits are purchased with Telegram Stars inside the bot and are used to send messages beyond the daily free allowance and to unlock content.</li>
+          <li>Credits have no monetary value, are non-transferable, cannot be exchanged for money or Stars and expire 12 months after purchase. We will notify you 7 and 2 days in advance.</li>
+          <li>Credits are spent starting with those that expire first.</li>
+          <li>Unlocked content remains available to view again at no cost while the service is active.</li>
+          <li>Current prices are shown in the shop before each purchase.</li>
+        </ul>
+        <h2>6. Immediate delivery and right of withdrawal</h2>
+        <p>
+          Credits are digital content delivered immediately. By completing payment you expressly consent to immediate delivery and
+          acknowledge that, under article 103(m) of the Spanish consumer protection law (Texto Refundido de la Ley General para la Defensa
+          de los Consumidores y Usuarios), you lose your right of withdrawal. Please also see our <Link href="/legal/refunds">refund policy</Link>.
+        </p>
+        <h2>7. Support</h2>
+        <p>For any payment issue, use the /paysupport command in the bot. Telegram support cannot help with purchases made in this bot.</p>
+        <h2>8. Liability and changes</h2>
+        <p>
+          We provide the service with the utmost diligence but cannot guarantee it will be uninterrupted. We may update these terms; relevant
+          changes will be announced in the bot. These terms are governed by Spanish law. In case of discrepancy, the Spanish version prevails.
+        </p>
+      </>
+    ),
+  },
+  privacy: {
+    title: "Privacy Policy",
+    en: true,
+    body: () => (
+      <>
+        <h2>Data controller</h2>
+        <Owner en />
+        <h2>What data we process and why</h2>
+        <ul className="legal">
+          <li>Telegram ID, name and username: to provide the service (performance of the contract).</li>
+          <li>Date of birth: to verify that you are of legal age (legal obligation and legitimate interest in protecting minors).</li>
+          <li>Conversations with the companions: to generate replies and keep context.</li>
+          <li>Purchases, credits and refunds: to manage payments and meet accounting and tax obligations.</li>
+          <li>Safety signals (for example, signs that a user may be a minor): to protect minors and other users.</li>
+        </ul>
+        <h2>Processors and transfers</h2>
+        <p>
+          We use providers that process data on our behalf: Telegram (messaging and Stars payments), OpenAI (reply generation; messages are
+          sent to generate the reply), Vercel (hosting) and Neon (database). Some are located outside the European Economic Area; transfers
+          rely on the European Commission&apos;s standard contractual clauses or the EU-US Data Privacy Framework. We do not sell your data or
+          use it to train models.
+        </p>
+        <h2>How long we keep it</h2>
+        <ul className="legal">
+          <li>Conversations: 90 days; they are then deleted automatically.</li>
+          <li>Profile data and date of birth: while you use the service or until you ask us to delete them.</li>
+          <li>Purchase and credit records: for the period required by accounting and tax law (up to 6 years).</li>
+          <li>Blocks due to being a minor: kept to prevent new access.</li>
+        </ul>
+        <h2>Your rights</h2>
+        <p>
+          You can exercise your rights of access, rectification, erasure, objection, restriction and portability. The
+          <b> /borrar_datos</b> command immediately deletes your conversations and profile data, keeping only the mandatory accounting records.
+          For other rights, write to us via /paysupport or the contact above. You can also lodge a complaint with the Spanish Data Protection
+          Agency (aepd.es).
+        </p>
+      </>
+    ),
+  },
+  refunds: {
+    title: "Refund Policy",
+    en: true,
+    body: () => (
+      <>
+        <h2>When we return your Stars</h2>
+        <ul className="legal">
+          <li>If a payment was charged but the credits were not added to your balance.</li>
+          <li>If you were charged twice.</li>
+          <li>If a technical error on our side prevented you from using what you bought.</li>
+          <li>As a courtesy, if you ask within 14 days of purchase and have not used any credits from that pack.</li>
+        </ul>
+        <h2>How to request it</h2>
+        <p>
+          Type /paysupport in the bot, including the reference shown on your receipt. We reply within 72 hours at most. Telegram support
+          cannot handle refunds for purchases made in this bot.
+        </p>
+        <h2>How it works</h2>
+        <p>
+          Refunds are made in full in Telegram Stars, to the same account that paid, through Telegram&apos;s official system. When refunding,
+          the credits from that pack are removed from your balance; if you have already used part of them, they are deducted from your
+          available balance.
+        </p>
+        <h2>Credits</h2>
+        <p>
+          Credits have no monetary value, are non-transferable, cannot be exchanged for money and expire 12 months after purchase. Expired
+          credits are not refundable. We notify you 7 and 2 days before each expiry.
+        </p>
+      </>
+    ),
+  },
 };
 
 export function generateStaticParams() {
@@ -159,13 +281,23 @@ export default function LegalPage({ params }: { params: { slug: string } }) {
     <main className="wrap">
       <div className="brand">Luna Companions</div>
       <h1>{page.title}</h1>
-      <p className="muted">Última actualización: {UPDATED}</p>
+      <p className="muted">{page.en ? `Last updated: ${UPDATED_EN}` : `Última actualización: ${UPDATED}`}</p>
       {page.body()}
-      <nav className="legal-nav">
-        <Link href="/legal/terminos">Términos</Link>
-        <Link href="/legal/privacidad">Privacidad</Link>
-        <Link href="/legal/reembolsos">Reembolsos</Link>
-      </nav>
+      {page.en ? (
+        <nav className="legal-nav">
+          <Link href="/legal/terms">Terms</Link>
+          <Link href="/legal/privacy">Privacy</Link>
+          <Link href="/legal/refunds">Refunds</Link>
+          <Link href="/legal/terminos">Español</Link>
+        </nav>
+      ) : (
+        <nav className="legal-nav">
+          <Link href="/legal/terminos">Términos</Link>
+          <Link href="/legal/privacidad">Privacidad</Link>
+          <Link href="/legal/reembolsos">Reembolsos</Link>
+          <Link href="/legal/terms">English</Link>
+        </nav>
+      )}
     </main>
   );
 }

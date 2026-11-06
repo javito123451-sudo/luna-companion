@@ -3,7 +3,7 @@ import type { Api } from "grammy";
 import { one, q, tx } from "./db";
 import { getBalance, grantPurchaseBatch, spendCredits } from "./credits";
 import { getSettings } from "./settings";
-import { T } from "./texts";
+import { Lang, tr } from "./texts";
 
 export type Pack = {
   id: string;
@@ -23,7 +23,8 @@ export async function listActivePacks(): Promise<Pack[]> {
 }
 
 /** Crea el registro de pago pendiente y envía la factura en Stars (XTR, provider_token vacío). */
-export async function sendPackInvoice(api: Api, chatId: number, userId: string, packId: string) {
+export async function sendPackInvoice(api: Api, chatId: number, userId: string, packId: string, lang: Lang = "es") {
+  const T = tr(lang);
   const pack = await one<Pack>(`SELECT * FROM credit_packs WHERE id = $1 AND active`, [packId]);
   if (!pack) return null;
   const payload = `lc1:${randomUUID()}`;
@@ -38,13 +39,14 @@ export async function sendPackInvoice(api: Api, chatId: number, userId: string, 
     T.invoiceDescription(total, packBonus(pack)),
     payload,
     "XTR",
-    [{ label: `${total} créditos`, amount: pack.stars }],
+    [{ label: T.invoiceLabel(total), amount: pack.stars }],
     { provider_token: "", protect_content: true } as any,
   );
   return pack;
 }
 
-export type PreCheckoutVerdict = { ok: true } | { ok: false; error: string };
+export type PreCheckoutCode = "generic" | "age" | "blocked" | "pack";
+export type PreCheckoutVerdict = { ok: true } | { ok: false; code: PreCheckoutCode };
 
 /** Validación para answerPreCheckoutQuery (< 10 s). */
 export async function validatePreCheckout(p: {
@@ -53,19 +55,18 @@ export async function validatePreCheckout(p: {
   currency: string;
   totalAmount: number;
 }): Promise<PreCheckoutVerdict> {
-  const E = T.preCheckoutErrors;
-  if (p.currency !== "XTR") return { ok: false, error: E.generic };
+  if (p.currency !== "XTR") return { ok: false, code: "generic" };
   const row = await one<any>(
     `SELECT p.id, p.status, p.stars, u.telegram_id, u.is_blocked, u.age_verified_at, u.flagged_for_review_at, k.active AS pack_active, k.stars AS pack_stars
        FROM payments p JOIN users u ON u.id = p.user_id JOIN credit_packs k ON k.id = p.pack_id
       WHERE p.invoice_payload = $1`,
     [p.payload],
   );
-  if (!row || Number(row.telegram_id) !== p.telegramId) return { ok: false, error: E.generic };
-  if (row.is_blocked || row.flagged_for_review_at) return { ok: false, error: E.blocked };
-  if (!row.age_verified_at) return { ok: false, error: E.age };
-  if (!row.pack_active) return { ok: false, error: E.pack };
-  if (row.status !== "pending" || Number(row.stars) !== p.totalAmount) return { ok: false, error: E.generic };
+  if (!row || Number(row.telegram_id) !== p.telegramId) return { ok: false, code: "generic" };
+  if (row.is_blocked || row.flagged_for_review_at) return { ok: false, code: "blocked" };
+  if (!row.age_verified_at) return { ok: false, code: "age" };
+  if (!row.pack_active) return { ok: false, code: "pack" };
+  if (row.status !== "pending" || Number(row.stars) !== p.totalAmount) return { ok: false, code: "generic" };
   await q(`UPDATE payments SET pre_checkout_at = now(), updated_at = now() WHERE id = $1`, [row.id]);
   return { ok: true };
 }
@@ -138,7 +139,7 @@ export async function refundPayment(
 ) {
   return tx(async (c) => {
     const pay = await one<any>(
-      `SELECT p.*, u.telegram_id FROM payments p JOIN users u ON u.id = p.user_id
+      `SELECT p.*, u.telegram_id, u.language FROM payments p JOIN users u ON u.id = p.user_id
         WHERE p.telegram_payment_charge_id = $1 FOR UPDATE OF p`,
       [chargeId],
       c,
@@ -179,6 +180,7 @@ export async function refundPayment(
       creditsReverted: reverted,
       stars: Number(pay.stars),
       telegramId: Number(pay.telegram_id),
+      language: (pay.language ?? "es") as Lang,
     };
   });
 }

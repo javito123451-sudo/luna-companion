@@ -7,7 +7,7 @@ import { Companion, generateReply, HistoryMessage } from "../lib/llm";
 import { listActivePacks, packTotal, processSuccessfulPayment, refundPayment, sendPackInvoice, validatePreCheckout } from "../lib/payments";
 import { detectCrisis, detectMinorSignal, detectProhibitedRequest, parseBirthDate } from "../lib/safety";
 import { freeLimitFor, getSettings, legalUrl } from "../lib/settings";
-import { MENU, T } from "../lib/texts";
+import { detectLang, Lang, menuAction, MENUS, tr } from "../lib/texts";
 import {
   canUseContent,
   consumeFreeMessage,
@@ -26,16 +26,35 @@ type Ctx = Context & { user?: User };
 
 const HTML = { parse_mode: "HTML" as const, link_preview_options: { is_disabled: true } };
 
-export const mainMenu = () =>
-  new Keyboard()
-    .text(MENU.chat).text(MENU.gallery).row()
-    .text(MENU.shop).text(MENU.balance).row()
-    .text(MENU.switch).text(MENU.help)
+/** Idioma del usuario: el guardado, o el de su Telegram si aún no está cargado. */
+const langOf = (ctx: Ctx): Lang => (ctx.user?.language as Lang) ?? detectLang(ctx.from?.language_code);
+const L = (ctx: Ctx) => tr(langOf(ctx));
+
+/** Campos de la companion en el idioma del usuario (columna i18n con traducciones). */
+function loc<C extends { i18n?: any }>(c: C, lang: Lang): C {
+  const t = lang === "en" ? c.i18n?.en : null;
+  return t ? { ...c, ...Object.fromEntries(Object.entries(t).filter(([, v]) => !!v)) } : c;
+}
+
+export const mainMenu = (lang: Lang = "es") => {
+  const M = MENUS[lang];
+  return new Keyboard()
+    .text(M.chat).text(M.gallery).row()
+    .text(M.shop).text(M.balance).row()
+    .text(M.switch).text(M.help)
     .resized()
     .persistent();
+};
 
-const legalKeyboard = () =>
-  new InlineKeyboard().url("Términos", legalUrl("terminos")).url("Privacidad", legalUrl("privacidad")).row().url("Reembolsos", legalUrl("reembolsos"));
+const legalKeyboard = (ctx: Ctx) => {
+  const lang = langOf(ctx);
+  const b = tr(lang).btn;
+  return new InlineKeyboard()
+    .url(b.terms, legalUrl("terminos", lang))
+    .url(b.privacy, legalUrl("privacidad", lang))
+    .row()
+    .url(b.refunds, legalUrl("reembolsos", lang));
+};
 
 async function activeCompanion(u: User): Promise<(Companion & { tagline: string | null }) | null> {
   if (!u.active_companion_id) return null;
@@ -43,25 +62,26 @@ async function activeCompanion(u: User): Promise<(Companion & { tagline: string 
 }
 
 async function showWelcome(ctx: Ctx) {
-  await ctx.reply(T.welcome(), { ...HTML, reply_markup: new InlineKeyboard().text("Continuar", "onb:go") });
+  await ctx.reply(L(ctx).welcome(), { ...HTML, reply_markup: new InlineKeyboard().text(L(ctx).btn.continue, "onb:go") });
 }
 
 async function showAgeGate(ctx: Ctx, u: User) {
   await setPending(u.id, "await_birthdate");
-  await ctx.reply(T.ageGate(), { ...HTML, reply_markup: { remove_keyboard: true } });
+  await ctx.reply(L(ctx).ageGate(), { ...HTML, reply_markup: { remove_keyboard: true } });
 }
 
 async function showCatalog(ctx: Ctx) {
   const list = await q<any>(`SELECT * FROM companions WHERE active = 1 ORDER BY sort_order, name`);
-  await ctx.reply(T.catalogIntro(), { ...HTML, reply_markup: mainMenu() });
-  for (const c of list) {
-    const kb = new InlineKeyboard().text(`Conversar con ${c.name}`, `comp:${c.slug}`);
+  await ctx.reply(L(ctx).catalogIntro(), { ...HTML, reply_markup: mainMenu(langOf(ctx)) });
+  for (const raw of list) {
+    const c = loc(raw, langOf(ctx));
+    const kb = new InlineKeyboard().text(L(ctx).btn.talkTo(c.name), `comp:${c.slug}`);
     if (c.avatar_file_id || c.avatar_pathname) {
       try {
         const { blobIO } = await import("../lib/content");
         const { InputFile } = await import("grammy");
         const photo = c.avatar_file_id ?? new InputFile(await blobIO.get(c.avatar_pathname), `${c.slug}.jpg`);
-        const m = await ctx.replyWithPhoto(photo, { caption: T.companionCard(c), parse_mode: "HTML", reply_markup: kb });
+        const m = await ctx.replyWithPhoto(photo, { caption: L(ctx).companionCard(c), parse_mode: "HTML", reply_markup: kb });
         if (!c.avatar_file_id && m.photo?.length) {
           await q(`UPDATE companions SET avatar_file_id = $2 WHERE id = $1`, [c.id, m.photo[m.photo.length - 1].file_id]);
         }
@@ -70,15 +90,15 @@ async function showCatalog(ctx: Ctx) {
         console.error("[catalog] avatar", c.slug, e);
       }
     }
-    await ctx.reply(T.companionCard(c), { ...HTML, reply_markup: kb });
+    await ctx.reply(L(ctx).companionCard(c), { ...HTML, reply_markup: kb });
   }
 }
 
 async function showShop(ctx: Ctx) {
   const packs = await listActivePacks();
   const kb = new InlineKeyboard();
-  for (const p of packs) kb.text(T.packButton({ name: p.name, total: packTotal(p), stars: p.stars, featured: p.featured }), `buy:${p.id}`).row();
-  await ctx.reply(T.shopIntro(), { ...HTML, reply_markup: kb });
+  for (const p of packs) kb.text(L(ctx).packButton({ name: p.name, total: packTotal(p), stars: p.stars, featured: p.featured }), `buy:${p.id}`).row();
+  await ctx.reply(L(ctx).shopIntro(), { ...HTML, reply_markup: kb });
 }
 
 async function showBalance(ctx: Ctx, u: User) {
@@ -89,15 +109,15 @@ async function showBalance(ctx: Ctx, u: User) {
     listRecentTransactions(u.id, 8),
     freeLeftToday(u.id, freeLimitFor(u, s)),
   ]);
-  await ctx.reply(T.balance({ total, batches, txs, freeLeft, freePerDay: freeLimitFor(u, s) }), {
+  await ctx.reply(L(ctx).balance({ total, batches, txs, freeLeft, freePerDay: freeLimitFor(u, s) }), {
     ...HTML,
-    reply_markup: new InlineKeyboard().text("Recargar", "shop"),
+    reply_markup: new InlineKeyboard().text(L(ctx).btn.topUp, "shop"),
   });
 }
 
 const PAGE = 5;
 async function showGallery(ctx: Ctx, u: User, offset = 0) {
-  if (!canUseContent(u)) return ctx.reply(T.contentRestricted());
+  if (!canUseContent(u)) return ctx.reply(L(ctx).contentRestricted());
   const comp = await activeCompanion(u);
   if (!comp) return askCompanion(ctx);
   const assets = await q<Asset & { unlocked: boolean }>(
@@ -108,25 +128,25 @@ async function showGallery(ctx: Ctx, u: User, offset = 0) {
       LIMIT $3 OFFSET $4`,
     [comp.id, u.id, PAGE + 1, offset],
   );
-  if (!assets.length && offset === 0) return ctx.reply(T.galleryEmpty(comp.name), HTML);
-  if (offset === 0) await ctx.reply(T.galleryIntro(comp.name, await getBalance(u.id)), HTML);
+  if (!assets.length && offset === 0) return ctx.reply(L(ctx).galleryEmpty(comp.name), HTML);
+  if (offset === 0) await ctx.reply(L(ctx).galleryIntro(comp.name, await getBalance(u.id)), HTML);
   for (const a of assets.slice(0, PAGE)) {
     const kb = a.unlocked
-      ? new InlineKeyboard().text("Ver de nuevo", `unl:${a.id}`)
-      : new InlineKeyboard().text(`Desbloquear · ${a.credit_cost} créditos`, `unl:${a.id}`);
+      ? new InlineKeyboard().text(L(ctx).btn.seeAgain, `unl:${a.id}`)
+      : new InlineKeyboard().text(L(ctx).btn.unlock(a.credit_cost), `unl:${a.id}`);
     try {
-      await sendAsset(ctx.api, ctx.chat!.id, a, "preview", { caption: T.previewCaption(a, a.unlocked), reply_markup: kb });
+      await sendAsset(ctx.api, ctx.chat!.id, a, "preview", { caption: L(ctx).previewCaption(a, a.unlocked), reply_markup: kb });
     } catch (e) {
       console.error("[gallery] preview", a.id, e);
     }
   }
   if (assets.length > PAGE) {
-    await ctx.reply("¿Quieres ver más?", { reply_markup: new InlineKeyboard().text("Ver más", `gal:${offset + PAGE}`) });
+    await ctx.reply(L(ctx).moreQuestion(), { reply_markup: new InlineKeyboard().text(L(ctx).btn.seeMore, `gal:${offset + PAGE}`) });
   }
 }
 
 async function askCompanion(ctx: Ctx) {
-  await ctx.reply(T.needCompanion(), HTML);
+  await ctx.reply(L(ctx).needCompanion(), HTML);
   await showCatalog(ctx);
 }
 
@@ -134,11 +154,11 @@ async function askCompanion(ctx: Ctx) {
 async function gate(ctx: Ctx, opts: { allowUnverified?: boolean } = {}): Promise<boolean> {
   const u = ctx.user!;
   if (u.is_blocked) {
-    await ctx.reply(T.blocked(), HTML);
+    await ctx.reply(L(ctx).blocked(), HTML);
     return false;
   }
   if (u.flagged_for_review_at) {
-    await ctx.reply(T.underReview(), HTML);
+    await ctx.reply(L(ctx).underReview(), HTML);
     return false;
   }
   if (!u.age_verified_at && !opts.allowUnverified) {
@@ -156,16 +176,16 @@ async function handleChat(ctx: Ctx, text: string) {
   const minor = detectMinorSignal(text);
   if (minor) {
     await flagMinorSignal(u.id, minor);
-    return ctx.reply(T.minorCut(comp.name), HTML);
+    return ctx.reply(L(ctx).minorCut(comp.name), HTML);
   }
   if (detectCrisis(text)) {
     await logSafety(u.id, "crisis", null);
-    return ctx.reply(T.crisis(), HTML);
+    return ctx.reply(L(ctx).crisis(), HTML);
   }
   const prohibited = detectProhibitedRequest(text);
   if (prohibited) {
     await logSafety(u.id, "prohibited_request", prohibited);
-    return ctx.reply(T.prohibited(), HTML);
+    return ctx.reply(L(ctx).prohibited(), HTML);
   }
 
   const s = await getSettings();
@@ -174,9 +194,9 @@ async function handleChat(ctx: Ctx, text: string) {
   if (freeLeft === null) {
     const r = await tx((c) => spendCredits(c, u.id, s.creditsPerMessage, "spend_message", { note: comp.slug }));
     if (!r.ok) {
-      return ctx.reply(T.noCredits(s.creditsPerMessage, r.balance), {
+      return ctx.reply(L(ctx).noCredits(s.creditsPerMessage, r.balance), {
         ...HTML,
-        reply_markup: new InlineKeyboard().text("Ir a la tienda", "shop"),
+        reply_markup: new InlineKeyboard().text(L(ctx).btn.goShop, "shop"),
       });
     }
     allocations = r.allocations;
@@ -192,12 +212,12 @@ async function handleChat(ctx: Ctx, text: string) {
 
   let reply: string;
   try {
-    reply = await generateReply(comp, history, text);
+    reply = await generateReply(comp, history, text, langOf(ctx));
   } catch (e) {
     console.error("[chat] LLM", e);
     if (allocations) await tx((c) => restoreAllocations(c, u.id, allocations!, "fallo de IA"));
     else await refundFreeMessage(u.id);
-    return ctx.reply(T.llmError(), HTML);
+    return ctx.reply(L(ctx).llmError(), HTML);
   }
 
   await q(
@@ -206,32 +226,32 @@ async function handleChat(ctx: Ctx, text: string) {
   );
   await ctx.reply(reply);
 
-  if (freeLeft === 3) await ctx.reply(T.freeLeft3(), HTML);
+  if (freeLeft === 3) await ctx.reply(L(ctx).freeLeft3(), HTML);
   if (freeLeft === 0) {
-    await ctx.reply(T.freeExhausted(s.creditsPerMessage), { ...HTML, reply_markup: new InlineKeyboard().text("Ver la tienda", "shop") });
+    await ctx.reply(L(ctx).freeExhausted(s.creditsPerMessage), { ...HTML, reply_markup: new InlineKeyboard().text(L(ctx).btn.seeShop, "shop") });
   }
 }
 
 async function handleUnlockRequest(ctx: Ctx, assetId: string) {
   const u = ctx.user!;
-  if (!canUseContent(u)) return ctx.reply(T.contentRestricted());
+  if (!canUseContent(u)) return ctx.reply(L(ctx).contentRestricted());
   const asset = await one<Asset>(`SELECT * FROM content_assets WHERE id = $1 AND active`, [assetId]);
-  if (!asset) return ctx.reply("Este contenido ya no está disponible.");
+  if (!asset) return ctx.reply(L(ctx).contentGone());
   const owned = await one(`SELECT 1 FROM unlocked_content WHERE user_id = $1 AND content_asset_id = $2`, [u.id, assetId]);
-  if (owned) return deliverUnlocked(ctx.api, ctx.chat!.id, asset);
+  if (owned) return deliverUnlocked(ctx.api, ctx.chat!.id, asset, langOf(ctx));
   const balance = await getBalance(u.id);
   if (balance < asset.credit_cost) {
-    return ctx.reply(T.unlockInsufficient(asset.credit_cost, balance), { ...HTML, reply_markup: new InlineKeyboard().text("Recargar", "shop") });
+    return ctx.reply(L(ctx).unlockInsufficient(asset.credit_cost, balance), { ...HTML, reply_markup: new InlineKeyboard().text(L(ctx).btn.topUp, "shop") });
   }
-  await ctx.reply(T.unlockConfirm(asset.credit_cost, balance), {
+  await ctx.reply(L(ctx).unlockConfirm(asset.credit_cost, balance), {
     ...HTML,
-    reply_markup: new InlineKeyboard().text("Confirmar", `unc:${asset.id}`).text("Cancelar", "x"),
+    reply_markup: new InlineKeyboard().text(L(ctx).btn.confirm, `unc:${asset.id}`).text(L(ctx).btn.cancel, "x"),
   });
 }
 
 async function handleUnlockConfirm(ctx: Ctx, assetId: string) {
   const u = ctx.user!;
-  if (!canUseContent(u)) return ctx.reply(T.contentRestricted());
+  if (!canUseContent(u)) return ctx.reply(L(ctx).contentRestricted());
   const result = await tx(async (c) => {
     const asset = await one<Asset>(`SELECT * FROM content_assets WHERE id = $1 AND active`, [assetId], c);
     if (!asset) return { kind: "gone" as const };
@@ -251,12 +271,12 @@ async function handleUnlockConfirm(ctx: Ctx, assetId: string) {
   });
 
   await ctx.editMessageReplyMarkup().catch(() => undefined);
-  if (result.kind === "gone") return ctx.reply("Este contenido ya no está disponible.");
+  if (result.kind === "gone") return ctx.reply(L(ctx).contentGone());
   if (result.kind === "insufficient") {
-    return ctx.reply(T.unlockInsufficient(result.cost, result.balance), { ...HTML, reply_markup: new InlineKeyboard().text("Recargar", "shop") });
+    return ctx.reply(L(ctx).unlockInsufficient(result.cost, result.balance), { ...HTML, reply_markup: new InlineKeyboard().text(L(ctx).btn.topUp, "shop") });
   }
-  await deliverUnlocked(ctx.api, ctx.chat!.id, result.asset);
-  if (result.kind === "unlocked") await ctx.reply(T.unlockDone(result.balance), HTML);
+  await deliverUnlocked(ctx.api, ctx.chat!.id, result.asset, langOf(ctx));
+  if (result.kind === "unlocked") await ctx.reply(L(ctx).unlockDone(result.balance), HTML);
 }
 
 export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testEnv?: boolean } = {}) {
@@ -275,19 +295,19 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
 
   bot.on("pre_checkout_query", async (ctx) => {
     const pq = ctx.preCheckoutQuery;
-    let verdict;
+    let verdict: Awaited<ReturnType<typeof validatePreCheckout>>;
     try {
       verdict = await validatePreCheckout({ telegramId: pq.from.id, payload: pq.invoice_payload, currency: pq.currency, totalAmount: pq.total_amount });
     } catch (e) {
       console.error("[pre_checkout]", e);
-      verdict = { ok: false as const, error: T.preCheckoutErrors.generic };
+      verdict = { ok: false, code: "generic" };
     }
     if (verdict.ok) await ctx.answerPreCheckoutQuery(true);
-    else await ctx.answerPreCheckoutQuery(false, { error_message: verdict.error });
+    else await ctx.answerPreCheckoutQuery(false, { error_message: L(ctx).preCheckoutErrors[verdict.code] });
   });
 
   bot.use(async (ctx, next) => {
-    if (ctx.from && !ctx.from.is_bot) ctx.user = await upsertUser(ctx.from);
+    if (ctx.from && !ctx.from.is_bot) ctx.user = await upsertUser({ ...ctx.from, language: detectLang(ctx.from.language_code) });
     await next();
   });
 
@@ -300,9 +320,9 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
       totalAmount: sp.total_amount,
     });
     if (out.status === "credited") {
-      await ctx.reply(T.receipt(out), { ...HTML, reply_markup: mainMenu() });
+      await ctx.reply(L(ctx).receipt(out), { ...HTML, reply_markup: mainMenu(langOf(ctx)) });
     } else if (out.status === "unknown_payload") {
-      await ctx.reply(`Hemos recibido tu pago (ref. <code>${out.reference}</code>) y lo estamos revisando. Escribe /paysupport si necesitas ayuda.`, HTML);
+      await ctx.reply(L(ctx).paymentUnknown(out.reference), HTML);
     }
   });
 
@@ -317,7 +337,7 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
 
   bot.command("start", async (ctx) => {
     const u = ctx.user!;
-    if (u.is_blocked) return ctx.reply(T.blocked(), HTML);
+    if (u.is_blocked) return ctx.reply(L(ctx).blocked(), HTML);
     if (!u.age_verified_at) return showWelcome(ctx);
     if (!(await gate(ctx))) return;
     await showCatalog(ctx);
@@ -341,20 +361,20 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
   });
   bot.command("info", async (ctx) => {
     const comp = ctx.user ? await activeCompanion(ctx.user) : null;
-    await ctx.reply(T.info(comp?.ai_disclosure_text ?? null), HTML);
+    await ctx.reply(L(ctx).info(comp ? loc(comp as any, langOf(ctx)).ai_disclosure_text : null), HTML);
   });
-  bot.command(["ayuda", "help"], (ctx) => ctx.reply(T.help(), { ...HTML, reply_markup: legalKeyboard() }));
-  bot.command(["terminos", "terms"], (ctx) => ctx.reply(T.terms(), { ...HTML, reply_markup: legalKeyboard() }));
+  bot.command(["ayuda", "help"], (ctx) => ctx.reply(L(ctx).help(), { ...HTML, reply_markup: legalKeyboard(ctx) }));
+  bot.command(["terminos", "terms"], (ctx) => ctx.reply(L(ctx).terms(), { ...HTML, reply_markup: legalKeyboard(ctx) }));
   bot.command(["privacidad", "privacy"], async (ctx) => {
     const s = await getSettings();
-    await ctx.reply(T.privacy(s.messageRetentionDays), { ...HTML, reply_markup: legalKeyboard() });
+    await ctx.reply(L(ctx).privacy(s.messageRetentionDays), { ...HTML, reply_markup: legalKeyboard(ctx) });
   });
   bot.command(["paysupport", "soporte", "support"], async (ctx) => {
     await setPending(ctx.user!.id, "await_support");
-    await ctx.reply(T.paySupport(process.env.SUPPORT_CONTACT || null), HTML);
+    await ctx.reply(L(ctx).paySupport(process.env.SUPPORT_CONTACT || null), HTML);
   });
   bot.command("borrar_datos", (ctx) =>
-    ctx.reply(T.eraseConfirm(), { ...HTML, reply_markup: new InlineKeyboard().text("Sí, eliminar mis datos", "erase:yes").text("Cancelar", "erase:no") }),
+    ctx.reply(L(ctx).eraseConfirm(), { ...HTML, reply_markup: new InlineKeyboard().text(L(ctx).btn.eraseYes, "erase:yes").text(L(ctx).btn.cancel, "erase:no") }),
   );
 
   bot.on("callback_query:data", async (ctx) => {
@@ -367,16 +387,16 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
       await ctx.editMessageReplyMarkup().catch(() => undefined);
       if (arg === "yes") {
         await eraseUserData(u.id);
-        return ctx.reply(T.eraseDone(), { reply_markup: { remove_keyboard: true } });
+        return ctx.reply(L(ctx).eraseDone(), { reply_markup: { remove_keyboard: true } });
       }
-      return ctx.reply(T.eraseCancelled());
+      return ctx.reply(L(ctx).eraseCancelled());
     }
     if (action === "x") {
       await ctx.editMessageReplyMarkup().catch(() => undefined);
-      return ctx.reply(T.cancelled());
+      return ctx.reply(L(ctx).cancelled());
     }
     if (action === "onb") {
-      if (u.is_blocked) return ctx.reply(T.blocked(), HTML);
+      if (u.is_blocked) return ctx.reply(L(ctx).blocked(), HTML);
       if (u.age_verified_at) return showCatalog(ctx);
       return showAgeGate(ctx, u);
     }
@@ -385,16 +405,16 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     switch (action) {
       case "comp": {
         const c = await one<any>(`SELECT * FROM companions WHERE slug = $1 AND active = 1`, [arg]);
-        if (!c) return ctx.reply("Esta companion no está disponible.");
+        if (!c) return ctx.reply(L(ctx).companionUnavailable());
         await q(`UPDATE users SET active_companion_id = $2 WHERE id = $1`, [u.id, c.id]);
-        await ctx.reply(T.companionChosen(c.name), { ...HTML, reply_markup: mainMenu() });
-        return ctx.reply(c.welcome_message);
+        await ctx.reply(L(ctx).companionChosen(c.name), { ...HTML, reply_markup: mainMenu(langOf(ctx)) });
+        return ctx.reply(loc(c, langOf(ctx)).welcome_message);
       }
       case "shop":
         return showShop(ctx);
       case "buy": {
-        const pack = await sendPackInvoice(ctx.api, ctx.chat!.id, u.id, arg);
-        if (!pack) return ctx.reply(T.preCheckoutErrors.pack);
+        const pack = await sendPackInvoice(ctx.api, ctx.chat!.id, u.id, arg, langOf(ctx));
+        if (!pack) return ctx.reply(L(ctx).preCheckoutErrors.pack);
         return;
       }
       case "gal":
@@ -409,7 +429,7 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
   bot.on("message:text", async (ctx) => {
     const u = ctx.user!;
     const text = ctx.message.text.trim();
-    if (text.startsWith("/")) return ctx.reply(T.help(), HTML);
+    if (text.startsWith("/")) return ctx.reply(L(ctx).help(), HTML);
 
     if (u.pending_action === "await_support") {
       await setPending(u.id, null);
@@ -420,44 +440,44 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
           .sendMessage(Number(admin), `Nueva consulta de pagos\nUsuario: ${u.telegram_id}\n\n${text.slice(0, 3500)}`)
           .catch((e) => console.error("[support] notify", e));
       }
-      return ctx.reply(T.paySupportReceived());
+      return ctx.reply(L(ctx).paySupportReceived());
     }
 
-    if (u.is_blocked) return ctx.reply(T.blocked(), HTML);
+    if (u.is_blocked) return ctx.reply(L(ctx).blocked(), HTML);
 
     if (!u.age_verified_at) {
       if (u.pending_action !== "await_birthdate") return showWelcome(ctx);
       const parsed = parseBirthDate(text);
-      if (!parsed) return ctx.reply(T.ageInvalid(), HTML);
+      if (!parsed) return ctx.reply(L(ctx).ageInvalid(), HTML);
       const outcome = await recordBirthDate(u.id, parsed.iso, parsed.age);
-      if (outcome === "minor") return ctx.reply(T.ageRejected(), { reply_markup: { remove_keyboard: true } });
-      await ctx.reply(T.aiDisclosure(), HTML);
+      if (outcome === "minor") return ctx.reply(L(ctx).ageRejected(), { reply_markup: { remove_keyboard: true } });
+      await ctx.reply(L(ctx).aiDisclosure(), HTML);
       return showCatalog(ctx);
     }
 
     if (!(await gate(ctx))) return;
 
-    switch (text) {
-      case MENU.chat: {
+    switch (menuAction(text)) {
+      case "chat": {
         const c = await activeCompanion(u);
-        return c ? ctx.reply(T.chatHint(c.name), HTML) : askCompanion(ctx);
+        return c ? ctx.reply(L(ctx).chatHint(c.name), HTML) : askCompanion(ctx);
       }
-      case MENU.gallery:
+      case "gallery":
         return showGallery(ctx, u);
-      case MENU.shop:
+      case "shop":
         return showShop(ctx);
-      case MENU.balance:
+      case "balance":
         return showBalance(ctx, u);
-      case MENU.switch:
+      case "switch":
         return showCatalog(ctx);
-      case MENU.help:
-        return ctx.reply(T.help(), { ...HTML, reply_markup: legalKeyboard() });
+      case "help":
+        return ctx.reply(L(ctx).help(), { ...HTML, reply_markup: legalKeyboard(ctx) });
     }
     return handleChat(ctx, text);
   });
 
   bot.on("message", async (ctx) => {
-    if (ctx.user?.age_verified_at) await ctx.reply("Por ahora solo puedo leer mensajes de texto.");
+    if (ctx.user?.age_verified_at) await ctx.reply(L(ctx).textOnly());
   });
 
   bot.catch((err) => console.error("[bot] error no controlado", err.error));
@@ -478,18 +498,38 @@ export const BOT_COMMANDS = [
   { command: "ayuda", description: "Ayuda" },
 ];
 
+export const BOT_COMMANDS_EN = [
+  { command: "start", description: "Home" },
+  { command: "tienda", description: "Buy credits" },
+  { command: "saldo", description: "Balance, expiry and activity" },
+  { command: "galeria", description: "Exclusive content" },
+  { command: "companions", description: "Change companion" },
+  { command: "info", description: "Artificial intelligence notice" },
+  { command: "paysupport", description: "Payment help" },
+  { command: "terminos", description: "Terms of use" },
+  { command: "privacidad", description: "Privacy and your data" },
+  { command: "borrar_datos", description: "Delete your data" },
+  { command: "ayuda", description: "Help" },
+];
+
 export async function configureBot(api: Api, webhookUrl: string, secret: string | undefined) {
   await api.setWebhook(webhookUrl, {
     secret_token: secret,
     allowed_updates: ["message", "callback_query", "pre_checkout_query"],
     max_connections: 40,
   });
-  await api.setMyCommands(BOT_COMMANDS);
+  // Por defecto (cualquier idioma) en inglés; para Telegram en español, en español.
+  await api.setMyCommands(BOT_COMMANDS_EN);
   await api.setMyCommands(BOT_COMMANDS, { language_code: "es" });
   await api.setMyDescription(
-    "Luna Companions: conversaciones privadas con compañeras creadas con inteligencia artificial. Servicio exclusivo para mayores de 18 años.",
+    "Luna Companions: private conversations with companions created with artificial intelligence. Adults only (18+).",
   );
-  await api.setMyShortDescription("Compañeras de IA, conversaciones privadas. Solo +18.");
+  await api.setMyDescription(
+    "Luna Companions: conversaciones privadas con compañeras creadas con inteligencia artificial. Servicio exclusivo para mayores de 18 años.",
+    { language_code: "es" },
+  );
+  await api.setMyShortDescription("AI companions, private conversations. 18+ only.");
+  await api.setMyShortDescription("Compañeras de IA, conversaciones privadas. Solo +18.", { language_code: "es" });
   await api.setChatMenuButton({ menu_button: { type: "commands" } });
 }
 
