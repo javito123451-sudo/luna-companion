@@ -162,6 +162,7 @@ function build(lang: Lang) {
           refund: "Reembolso",
           expire: "Caducidad",
           restore: "Devolución automática",
+          spend_photo: "Foto personalizada",
           bonus: "Regalo",
         };
         const lines = [`<b>Tu saldo</b>\n`, `Créditos disponibles: <b>${n(p.total)}</b>`, `Mensajes gratuitos hoy: ${p.freeLeft} de ${p.freePerDay}`];
@@ -191,6 +192,17 @@ function build(lang: Lang) {
         `Este contenido cuesta ${cost} créditos y tu saldo es de ${n(balance)}. Puedes recargar en la tienda.`,
       unlockDone: (balance: number) => `<i>Desbloqueado. Saldo restante: ${n(balance)} créditos.</i>`,
       contentRestricted: () => `El contenido no está disponible para tu cuenta.`,
+      photoOffer: (name: string, caption: string, cost: number) =>
+        `<b>${esc(name)} puede hacerte una foto</b>\n\n<i>${esc(caption)}</i>\n\nCuesta <b>${cost} créditos</b> y será solo para ti. Se crea en unos segundos.`,
+      photoGenerating: (name: string) => `${esc(name)} está preparando tu foto…`,
+      photoDone: (balance: number) => `<i>Tu foto ya está guardada: puedes volver a verla gratis en la galería. Saldo: ${n(balance)} créditos.</i>`,
+      photoRefused: (name: string) =>
+        `${esc(name)} no puede hacer esa foto. Las fotos son siempre elegantes y sin desnudos, y nunca de personas reales. Prueba con otra idea, por ejemplo: «una foto en la playa al atardecer».`,
+      photoUnavailable: () => `Ahora mismo no puedo crear fotos nuevas, pero tengo algunas en mi galería que te pueden gustar.`,
+      photoFailed: () => `No ha salido bien la foto y no se te ha cobrado nada. Mientras tanto, mira esta de la galería.`,
+      photoLimit: (limit: number) => `Has llegado al límite de ${limit} fotos personalizadas por hoy. Mañana podrás pedir más; mientras tanto, echa un vistazo a la galería.`,
+      photoExpired: () => `Esta petición ya no está disponible. Pídeme la foto de nuevo.`,
+      photoFromGallery: (name: string) => `Mira esta de la galería de ${esc(name)}:`,
       contentGone: () => `Este contenido ya no está disponible.`,
       companionUnavailable: () => `Esta companion no está disponible.`,
       textOnly: () => `Por ahora solo puedo leer mensajes de texto.`,
@@ -206,7 +218,7 @@ function build(lang: Lang) {
       help: () =>
         `<b>Ayuda</b>\n\n` +
         `/start · Inicio\n/tienda · Comprar créditos\n/saldo · Saldo, caducidad y movimientos\n/galeria · Contenido exclusivo\n` +
-        `/companions · Cambiar de companion\n/info · Aviso sobre la IA\n/paysupport · Ayuda con pagos\n` +
+        `/foto · Pedir una foto personalizada\n/companions · Cambiar de companion\n/info · Aviso sobre la IA\n/paysupport · Ayuda con pagos\n` +
         `/terminos · Términos de uso\n/privacidad · Privacidad y tus datos\n/borrar_datos · Eliminar tus datos`,
 
       terms: () =>
@@ -251,6 +263,8 @@ function build(lang: Lang) {
         confirm: "Confirmar",
         cancel: "Cancelar",
         eraseYes: "Sí, eliminar mis datos",
+        createPhoto: (cost: number) => `Crear foto · ${cost} créditos`,
+        viewGallery: "Ver galería",
         terms: "Términos",
         privacy: "Privacidad",
         refunds: "Reembolsos",
@@ -368,6 +382,7 @@ function build(lang: Lang) {
         refund: "Refund",
         expire: "Expiry",
         restore: "Automatic return",
+        spend_photo: "Custom photo",
         bonus: "Gift",
       };
       const lines = [`<b>Your balance</b>\n`, `Available credits: <b>${n(p.total)}</b>`, `Free messages today: ${p.freeLeft} of ${p.freePerDay}`];
@@ -399,6 +414,17 @@ function build(lang: Lang) {
       `This content costs ${cost} credits and your balance is ${n(balance)}. You can top up in the shop.`,
     unlockDone: (balance: number) => `<i>Unlocked. Remaining balance: ${n(balance)} credits.</i>`,
     contentRestricted: () => `Content isn't available for your account.`,
+    photoOffer: (name: string, caption: string, cost: number) =>
+      `<b>${esc(name)} can take a photo for you</b>\n\n<i>${esc(caption)}</i>\n\nIt costs <b>${cost} credits</b> and it will be just for you. It's ready in a few seconds.`,
+    photoGenerating: (name: string) => `${esc(name)} is getting your photo ready…`,
+    photoDone: (balance: number) => `<i>Your photo is saved: you can view it again for free in the gallery. Balance: ${n(balance)} credits.</i>`,
+    photoRefused: (name: string) =>
+      `${esc(name)} can't take that photo. Photos are always tasteful, without nudity, and never of real people. Try another idea, for example: "a photo on the beach at sunset".`,
+    photoUnavailable: () => `I can't create new photos right now, but there are some in my gallery you might like.`,
+    photoFailed: () => `The photo didn't come out right and you haven't been charged. In the meantime, have a look at this one from the gallery.`,
+    photoLimit: (limit: number) => `You've reached the limit of ${limit} custom photos for today. You can ask for more tomorrow; meanwhile, take a look at the gallery.`,
+    photoExpired: () => `This request is no longer available. Ask me for the photo again.`,
+    photoFromGallery: (name: string) => `Take a look at this one from ${esc(name)}'s gallery:`,
     contentGone: () => `This content is no longer available.`,
     companionUnavailable: () => `This companion isn't available.`,
     textOnly: () => `For now I can only read text messages.`,
@@ -414,7 +440,7 @@ function build(lang: Lang) {
     help: () =>
       `<b>Help</b>\n\n` +
       `/start · Home\n/tienda · Buy credits\n/saldo · Balance, expiry and activity\n/galeria · Exclusive content\n` +
-      `/companions · Change companion\n/info · AI notice\n/paysupport · Payment help\n` +
+      `/foto · Ask for a custom photo\n/companions · Change companion\n/info · AI notice\n/paysupport · Payment help\n` +
       `/terminos · Terms of use\n/privacidad · Privacy and your data\n/borrar_datos · Delete your data`,
 
     terms: () =>
@@ -459,6 +485,8 @@ function build(lang: Lang) {
       confirm: "Confirm",
       cancel: "Cancel",
       eraseYes: "Yes, delete my data",
+      createPhoto: (cost: number) => `Create photo · ${cost} credits`,
+      viewGallery: "View gallery",
       terms: "Terms",
       privacy: "Privacy",
       refunds: "Refunds",

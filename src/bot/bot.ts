@@ -2,7 +2,8 @@ import { Bot, Context, InlineKeyboard, Keyboard, type Api } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { one, q, tx } from "../lib/db";
 import { getBalance, listActiveBatches, listRecentTransactions, restoreAllocations, spendCredits } from "../lib/credits";
-import { Asset, deliverUnlocked, sendAsset } from "../lib/content";
+import { Asset, createAsset, deliverUnlocked, sendAsset } from "../lib/content";
+import { buildImagePrompt, detectPhotoIntent, photoIO, refUrl } from "../lib/photogen";
 import { Companion, generateReply, HistoryMessage } from "../lib/llm";
 import { listActivePacks, packTotal, processSuccessfulPayment, refundPayment, sendPackInvoice, validatePreCheckout } from "../lib/payments";
 import { detectCrisis, detectMinorSignal, detectProhibitedRequest, parseBirthDate } from "../lib/safety";
@@ -217,6 +218,8 @@ async function handleChat(ctx: Ctx, text: string) {
     return ctx.reply(L(ctx).prohibited(), HTML);
   }
 
+  if (detectPhotoIntent(text)) return handlePhotoRequest(ctx, comp, text);
+
   const s = await getSettings();
   const freeLeft = await consumeFreeMessage(u.id, freeLimitFor(u, s));
   let allocations: { batchId: string; amount: number }[] | null = null;
@@ -308,6 +311,131 @@ async function handleUnlockConfirm(ctx: Ctx, assetId: string) {
   if (result.kind === "unlocked") await ctx.reply(L(ctx).unlockDone(result.balance), HTML);
 }
 
+// ── Fotos personalizadas ──────────────────────────────────────────────────
+/** Ofrece una foto de la galería que el usuario aún no tenga (alternativa cuando no se puede generar). */
+async function offerGallery(ctx: Ctx, comp: { id: string; name: string }, intro?: string) {
+  const u = ctx.user!;
+  const a = await one<Asset>(
+    `SELECT a.* FROM content_assets a
+      WHERE a.companion_id = $1 AND a.active
+        AND NOT EXISTS (SELECT 1 FROM unlocked_content uc WHERE uc.content_asset_id = a.id AND uc.user_id = $2)
+      ORDER BY random() LIMIT 1`,
+    [comp.id, u.id],
+  );
+  if (intro) await ctx.reply(intro, HTML);
+  if (!a) return ctx.reply(L(ctx).galleryEmpty(comp.name), HTML);
+  await ctx.reply(L(ctx).photoFromGallery(comp.name), HTML);
+  return sendAsset(ctx.api, ctx.chat!.id, a, "preview", {
+    caption: L(ctx).previewCaption(a, false),
+    reply_markup: new InlineKeyboard().text(L(ctx).btn.unlock(a.credit_cost), `unl:${a.id}`),
+  });
+}
+
+async function handlePhotoRequest(ctx: Ctx, comp: Companion & { id: string }, text: string) {
+  const u = ctx.user!;
+  if (!canUseContent(u)) return ctx.reply(L(ctx).contentRestricted());
+  if (!photoIO.enabled()) return offerGallery(ctx, comp, L(ctx).photoUnavailable());
+  const s = await getSettings();
+  const today = await one<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM photo_requests
+      WHERE user_id = $1 AND status IN ('generating','done') AND created_at > (date_trunc('day', now() AT TIME ZONE 'Europe/Madrid') AT TIME ZONE 'Europe/Madrid')`,
+    [u.id],
+  );
+  if ((today?.n ?? 0) >= s.photoGenDailyLimit) return offerGallery(ctx, comp, L(ctx).photoLimit(s.photoGenDailyLimit));
+
+  await ctx.replyWithChatAction("typing").catch(() => undefined);
+  let plan;
+  try {
+    plan = await photoIO.planScene(text, comp.name);
+  } catch (e) {
+    console.error("[photo] plan", e);
+    return offerGallery(ctx, comp, L(ctx).photoUnavailable());
+  }
+  if (!plan.allowed || !plan.scene.trim()) {
+    await logSafety(u.id, "photo_refused", (plan.reason || "").slice(0, 200));
+    return ctx.reply(L(ctx).photoRefused(comp.name), HTML);
+  }
+  const req = await one<{ id: string }>(
+    `INSERT INTO photo_requests (user_id, companion_id, user_text, scene, caption_es, caption_en, credits)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [u.id, comp.id, text.slice(0, 1000), plan.scene, plan.caption_es.slice(0, 80), plan.caption_en.slice(0, 80), s.creditsPerGeneratedPhoto],
+  );
+  const caption = langOf(ctx) === "en" ? plan.caption_en : plan.caption_es;
+  return ctx.reply(L(ctx).photoOffer(comp.name, caption, s.creditsPerGeneratedPhoto), {
+    ...HTML,
+    reply_markup: new InlineKeyboard()
+      .text(L(ctx).btn.createPhoto(s.creditsPerGeneratedPhoto), `pg:${req!.id}`)
+      .row()
+      .text(L(ctx).btn.viewGallery, "gal:0")
+      .text(L(ctx).btn.cancel, "x"),
+  });
+}
+
+async function handlePhotoGenerate(ctx: Ctx, requestId: string) {
+  const u = ctx.user!;
+  if (!canUseContent(u)) return ctx.reply(L(ctx).contentRestricted());
+  await ctx.editMessageReplyMarkup().catch(() => undefined);
+  const r = await one<any>(
+    `UPDATE photo_requests SET status = 'generating', updated_at = now()
+      WHERE id = $1 AND user_id = $2 AND status = 'pending' AND created_at > now() - interval '1 hour'
+      RETURNING *`,
+    [requestId, u.id],
+  );
+  if (!r) return ctx.reply(L(ctx).photoExpired());
+  const comp = await one<any>(`SELECT * FROM companions WHERE id = $1`, [r.companion_id]);
+
+  const spend = await tx((c) => spendCredits(c, u.id, r.credits, "spend_photo", { note: comp.slug }));
+  if (!spend.ok) {
+    await q(`UPDATE photo_requests SET status = 'cancelled', reason = 'saldo insuficiente', updated_at = now() WHERE id = $1`, [r.id]);
+    return ctx.reply(L(ctx).unlockInsufficient(r.credits, spend.balance), {
+      ...HTML,
+      reply_markup: new InlineKeyboard().text(L(ctx).btn.topUp, "shop"),
+    });
+  }
+
+  await ctx.reply(L(ctx).photoGenerating(comp.name), HTML);
+  await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
+  const prompt = buildImagePrompt(comp.image_profile || `${comp.name}, an elegant adult woman`, r.scene);
+  try {
+    const image = await photoIO.generate(prompt, comp.avatar_pathname ? refUrl(comp.slug) : null);
+    const check = await photoIO.checkImage(image);
+    if (!check.ok) throw Object.assign(new Error("revisión de seguridad"), { rejected: true, details: check.details });
+
+    const asset = await createAsset({
+      file: image,
+      companionId: comp.id,
+      companionSlug: comp.slug,
+      tier: "medio",
+      creditCost: r.credits,
+      caption: r.caption_es,
+      captionEn: r.caption_en,
+      source: "generated",
+      active: false, // se guarda siempre; pasa a la galería pública solo si lo apruebas en el panel
+      requestedBy: u.id,
+      generationPrompt: prompt,
+      moderation: check.details,
+    });
+    await q(
+      `INSERT INTO unlocked_content (user_id, content_asset_id, credits_spent) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [u.id, asset!.id, r.credits],
+    );
+    await q(`UPDATE photo_requests SET status = 'done', asset_id = $2, updated_at = now() WHERE id = $1`, [r.id, asset!.id]);
+    const full = await one<Asset>(`SELECT * FROM content_assets WHERE id = $1`, [asset!.id]);
+    await deliverUnlocked(ctx.api, ctx.chat!.id, full!, langOf(ctx));
+    return ctx.reply(L(ctx).photoDone(spend.balanceAfter), HTML);
+  } catch (e: any) {
+    console.error("[photo] generate", e?.message ?? e);
+    await tx((c) => restoreAllocations(c, u.id, spend.allocations, "foto no generada"));
+    await q(`UPDATE photo_requests SET status = $2, reason = $3, updated_at = now() WHERE id = $1`, [
+      r.id,
+      e?.rejected ? "rejected" : "failed",
+      String(e?.message ?? "error").slice(0, 300),
+    ]);
+    if (e?.rejected) await logSafety(u.id, "photo_output_rejected", JSON.stringify(e?.details ?? {}).slice(0, 300));
+    return offerGallery(ctx, comp, L(ctx).photoFailed());
+  }
+}
+
 export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testEnv?: boolean } = {}) {
   const token = opts.token ?? process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("Falta TELEGRAM_BOT_TOKEN");
@@ -384,6 +512,12 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     if (!(await gate(ctx))) return;
     await showGallery(ctx, ctx.user!);
   });
+  bot.command(["foto", "photo"], async (ctx) => {
+    if (!(await gate(ctx))) return;
+    const comp = await activeCompanion(ctx.user!);
+    if (!comp) return askCompanion(ctx);
+    await handlePhotoRequest(ctx, comp, ctx.match?.trim() || "una foto tuya");
+  });
   bot.command(["companions", "cambiar"], async (ctx) => {
     if (!(await gate(ctx))) return;
     await showCatalog(ctx);
@@ -452,6 +586,8 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
         return handleUnlockRequest(ctx, arg);
       case "unc":
         return handleUnlockConfirm(ctx, arg);
+      case "pg":
+        return handlePhotoGenerate(ctx, arg);
     }
   });
 
@@ -518,6 +654,7 @@ export const BOT_COMMANDS = [
   { command: "tienda", description: "Comprar créditos" },
   { command: "saldo", description: "Saldo, caducidad y movimientos" },
   { command: "galeria", description: "Contenido exclusivo" },
+  { command: "foto", description: "Pedir una foto personalizada" },
   { command: "companions", description: "Cambiar de companion" },
   { command: "info", description: "Aviso sobre la inteligencia artificial" },
   { command: "paysupport", description: "Ayuda con pagos" },
@@ -532,6 +669,7 @@ export const BOT_COMMANDS_EN = [
   { command: "tienda", description: "Buy credits" },
   { command: "saldo", description: "Balance, expiry and activity" },
   { command: "galeria", description: "Exclusive content" },
+  { command: "foto", description: "Ask for a custom photo" },
   { command: "companions", description: "Change companion" },
   { command: "info", description: "Artificial intelligence notice" },
   { command: "paysupport", description: "Payment help" },
