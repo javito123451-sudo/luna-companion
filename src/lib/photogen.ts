@@ -31,7 +31,7 @@ export function detectPhotoIntent(text: string): boolean {
 export function buildImagePrompt(profile: string, scene: string): string {
   return (
     `Photorealistic photograph of ${profile}, clearly an adult woman over 25 with mature facial features and adult proportions. ` +
-    `${scene.trim().replace(/\.$/, "")}. Tasteful, elegant and non-explicit, fully adult styling, natural skin texture, ` +
+    `${scene.trim().replace(/\.$/, "")}. Sensual and tasteful, nipples and genitals never visible, fully adult styling, natural skin texture, ` +
     `professional photography, soft flattering light, high detail.`
   );
 }
@@ -77,8 +77,9 @@ async function openaiJSON(messages: unknown[], schemaName: string, schema: Recor
 }
 
 const PLANNER_RULES = `You turn a user's photo request for a fictional adult AI companion into a SAFE photo scene.
-ALLOWED: everyday, travel, fashion, fitness, beach/pool with swimwear, elegant evening dresses, cosy robes fully covering the body; romantic, flirty or glamorous moods.
-NOT ALLOWED (set allowed=false): nudity, topless, see-through, lingerie close-ups, sexual acts or explicit poses; anything involving minors, school uniforms, schoolgirl/teen styling, childlike features, pigtails with bows, plush toys; real people, celebrities or "looks like" requests; violence, injuries, drugs, non-consensual themes; other people in the picture.
+ALLOWED: everyday, travel, fashion, fitness, beach/pool with swimwear, elegant evening dresses, lingerie, silk robes, boudoir and bedroom scenes, sensual and seductive poses, implied nudity (back view, covered by hands, hair, sheets or a towel, strategic shadows); romantic, flirty, teasing or glamorous moods.
+When the user asks for something more daring (e.g. naked), turn it into IMPLIED nudity: always describe how the body is covered so that nipples and genitals are never visible.
+NOT ALLOWED (set allowed=false): visible nipples or genitals, explicit or sexual acts, sex toys, bodily fluids; anything involving minors, school uniforms, schoolgirl/teen styling, childlike features, pigtails with bows, plush toys; real people, celebrities or "looks like" requests; violence, injuries, drugs, non-consensual themes; other people in the picture.
 If the request is vague (e.g. "send me a photo"), invent a pleasant, flattering scene that fits the companion.
 The scene must be in English, max 60 words, describing setting, outfit, pose and lighting. Never describe the face, age or body shape (that is fixed elsewhere).
 Captions: a short, discreet title (max 6 words) in Spanish (caption_es) and English (caption_en).`;
@@ -117,10 +118,10 @@ export const photoIO = {
           image_urls: [reference],
           aspect_ratio: "3:4",
           output_format: "jpeg",
-          safety_tolerance: "2",
+          safety_tolerance: "4",
           num_images: 1,
         }
-      : { prompt, image_size: "portrait_4_3", output_format: "jpeg", safety_tolerance: "2", num_images: 1 };
+      : { prompt, image_size: "portrait_4_3", output_format: "jpeg", safety_tolerance: "4", num_images: 1 };
     const res = await fetch(`https://fal.run/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
@@ -147,7 +148,7 @@ export const photoIO = {
           content:
             "You are a strict safety reviewer for an adults-only platform. Look at the image and answer honestly. " +
             "adult_25_plus: the person clearly looks 25 or older. childlike_styling: school uniform, pigtails with bows, plush toys, childlike body or face. " +
-            "nudity: exposed nipples, genitals or buttocks, or see-through clothing. sexual_act: any sexual activity or explicit pose. multiple_people: more than one person.",
+            "nudity: visible nipples or genitals (implied nudity that keeps them covered, lingerie, swimwear and back views are NOT nudity). sexual_act: any sexual activity, sex toys or explicit pose. multiple_people: more than one person.",
         },
         { role: "user", content: [{ type: "image_url", image_url: { url: dataUrl } }] },
       ],

@@ -1,5 +1,5 @@
 import { isAdmin, unauthorized } from "@/lib/admin-auth";
-import { createAsset } from "@/lib/content";
+import { createAsset, regeneratePreviews } from "@/lib/content";
 import { one, q } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -66,4 +66,11 @@ export async function PATCH(req: Request) {
     [body.id, typeof body.active === "boolean" ? body.active : null, Number.isInteger(body.credit_cost) && body.credit_cost > 0 ? body.credit_cost : null],
   );
   return row ? Response.json({ ok: true, asset: row }) : Response.json({ error: "no encontrado" }, { status: 404 });
+}
+
+/** Regenera todas las vistas previas difuminadas. */
+export async function PUT(req: Request) {
+  if (!isAdmin(req)) return unauthorized();
+  const n = await regeneratePreviews();
+  return Response.json({ ok: true, regenerated: n });
 }
