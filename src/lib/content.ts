@@ -64,16 +64,35 @@ export async function createAsset(input: {
   creditCost: number;
   caption: string | null;
   captionEn?: string | null;
+  source?: "gallery" | "generated";
+  active?: boolean;
+  requestedBy?: string | null;
+  generationPrompt?: string | null;
+  moderation?: unknown;
 }) {
   const { full, preview } = await processImage(input.file);
-  const base = `content/${input.companionSlug}/${input.tier}`;
+  const base = `content/${input.companionSlug}/${input.source === "generated" ? "generated" : input.tier}`;
   const original = await blobIO.put(`${base}/asset.jpg`, full, "image/jpeg");
   const blurred = await blobIO.put(`${base}/preview.jpg`, preview, "image/jpeg");
   return one<{ id: string }>(
-    `INSERT INTO content_assets (companion_id, tier, credit_cost, caption, caption_en, storage_url, pathname, blurred_preview_url, preview_pathname, media_type, active, ai_generated_confirmed)
-     VALUES ($1,$2,$3,$4,$9,$5,$6,$7,$8,'photo',true,true) RETURNING id`,
-    [input.companionId, input.tier, input.creditCost, input.caption, original.url, original.pathname, blurred.url, blurred.pathname, input.captionEn ?? null],
+    `INSERT INTO content_assets (companion_id, tier, credit_cost, caption, caption_en, storage_url, pathname, blurred_preview_url, preview_pathname,
+                                 media_type, active, ai_generated_confirmed, source, requested_by, generation_prompt, moderation)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'photo',$10,true,$11,$12,$13,$14) RETURNING id`,
+    [
+      input.companionId, input.tier, input.creditCost, input.caption, input.captionEn ?? null,
+      original.url, original.pathname, blurred.url, blurred.pathname,
+      input.active ?? true, input.source ?? "gallery", input.requestedBy ?? null, input.generationPrompt ?? null,
+      input.moderation ? JSON.stringify(input.moderation) : null,
+    ],
   );
+}
+
+/** Foto de referencia de una companion (también se usa como avatar en el catálogo). */
+export async function setCompanionReference(companionId: string, slug: string, file: Buffer) {
+  const { full } = await processImage(file);
+  const ref = await blobIO.put(`companions/${slug}/reference.jpg`, full, "image/jpeg");
+  await q(`UPDATE companions SET avatar_pathname = $2, avatar_file_id = NULL WHERE id = $1`, [companionId, ref.pathname]);
+  return ref.pathname;
 }
 
 /**

@@ -6,6 +6,8 @@ export type Settings = {
   creditsPerMessage: number;
   messageRetentionDays: number;
   creditExpiryMonths: number;
+  creditsPerGeneratedPhoto: number;
+  photoGenDailyLimit: number;
 };
 
 const DEFAULTS: Settings = {
@@ -14,6 +16,8 @@ const DEFAULTS: Settings = {
   creditsPerMessage: 3,
   messageRetentionDays: 90,
   creditExpiryMonths: 12,
+  creditsPerGeneratedPhoto: 40,
+  photoGenDailyLimit: 10,
 };
 
 let cache: { at: number; value: Settings } | null = null;
@@ -32,6 +36,8 @@ export async function getSettings(): Promise<Settings> {
     creditsPerMessage: pick("credits_per_message", DEFAULTS.creditsPerMessage),
     messageRetentionDays: pick("message_retention_days", DEFAULTS.messageRetentionDays),
     creditExpiryMonths: pick("credit_expiry_months", DEFAULTS.creditExpiryMonths),
+    creditsPerGeneratedPhoto: pick("credits_per_generated_photo", DEFAULTS.creditsPerGeneratedPhoto),
+    photoGenDailyLimit: pick("photo_gen_daily_limit", DEFAULTS.photoGenDailyLimit),
   };
   cache = { at: Date.now(), value };
   return value;

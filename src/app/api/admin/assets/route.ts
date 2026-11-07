@@ -12,7 +12,7 @@ const MAX_BYTES = 4 * 1024 * 1024; // límite de cuerpo de las funciones de Verc
 export async function GET(req: Request) {
   if (!isAdmin(req)) return unauthorized();
   const rows = await q(
-    `SELECT a.id, a.tier, a.credit_cost, a.caption, a.active, a.created_at, c.name AS companion, c.slug,
+    `SELECT a.id, a.tier, a.credit_cost, a.caption, a.active, a.source, a.created_at, c.name AS companion, c.slug,
             COUNT(uc.user_id)::int AS sales, COALESCE(SUM(uc.credits_spent),0)::int AS credits
        FROM content_assets a JOIN companions c ON c.id = a.companion_id
        LEFT JOIN unlocked_content uc ON uc.content_asset_id = a.id

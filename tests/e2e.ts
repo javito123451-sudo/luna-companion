@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { createBot } from "../src/bot/bot";
 import { closePool, one, q, tx } from "../src/lib/db";
 import { blobIO, createAsset } from "../src/lib/content";
+import { photoIO, detectPhotoIntent } from "../src/lib/photogen";
 import { spendCredits, getBalance } from "../src/lib/credits";
 import { refundPayment } from "../src/lib/payments";
 import { runDailyJobs } from "../src/lib/cron";
@@ -454,6 +455,85 @@ async function main() {
     const n = calls.length;
     await sendText("hola", OTHER);
     assert.match(textsSince(n)[0], /Bienvenido/);
+  });
+
+  await test("Fotos personalizadas: detección, oferta, cobro, generación, guardado privado y entrega", async () => {
+    assert.ok(detectPhotoIntent("mándame una foto en la playa"));
+    assert.ok(detectPhotoIntent("send me a pic"));
+    assert.ok(detectPhotoIntent("foto tuya en bikini"));
+    assert.equal(detectPhotoIntent("me encantó tu historia"), false);
+    const sharp = (await import("sharp")).default;
+    const fake = await sharp({ create: { width: 600, height: 800, channels: 3, background: { r: 90, g: 60, b: 80 } } }).jpeg().toBuffer();
+    let generated = 0;
+    photoIO.enabled = () => true;
+    photoIO.planScene = async (t) =>
+      /desnuda|nude/i.test(t)
+        ? { allowed: false, reason: "nudity", scene: "", caption_es: "", caption_en: "" }
+        : { allowed: true, reason: "", scene: "on a sunny beach at golden hour wearing a red bikini", caption_es: "Atardecer en la playa", caption_en: "Beach sunset" };
+    photoIO.generate = async () => { generated++; return fake; };
+    photoIO.checkImage = async () => ({ ok: true, details: { adult_25_plus: true } });
+
+    const P = 900020;
+    await sendText("/start", P); await press("onb:go", P); await sendText("10/10/1988", P); await press("comp:luna", P);
+    const pu = await userRow(P);
+    await q(`INSERT INTO credit_batches (user_id, credits_total, credits_remaining, source, expires_at) VALUES ($1,100,100,'bonus', now() + interval '1 year')`, [pu.id]);
+
+    // Petición prohibida: se rechaza sin cobrar ni generar
+    let n = calls.length;
+    await sendText("mándame una foto desnuda", P);
+    assert.match(textsSince(n)[0], /no puede hacer esa foto/);
+    assert.equal(generated, 0);
+
+    // Petición válida: oferta → confirmación → cobro → foto
+    n = calls.length;
+    await sendText("mándame una foto en la playa", P);
+    const offer = calls.slice(n).find((c) => c.method === "sendMessage")!.payload;
+    assert.match(offer.text, /Atardecer en la playa/);
+    assert.match(offer.text, /40 créditos/);
+    const btn = offer.reply_markup.inline_keyboard.flat().find((b: any) => b.callback_data.startsWith("pg:"));
+    assert.equal(await getBalance(pu.id), 100, "no cobra al ofrecer");
+    n = calls.length;
+    await press(btn.callback_data, P);
+    assert.equal(generated, 1);
+    assert.equal(await getBalance(pu.id), 60);
+    const photo = calls.slice(n).find((c) => c.method === "sendPhoto")!.payload;
+    assert.equal(photo.protect_content, true);
+    const a = await one<any>(`SELECT * FROM content_assets WHERE source = 'generated' AND requested_by = $1`, [pu.id]);
+    assert.ok(a && a.active === false && a.pathname && a.generation_prompt.includes("clearly an adult woman over 25"));
+    assert.match(a.storage_url, /^https:\/\/private\.blob\.test\//);
+    const uc = await one<any>(`SELECT * FROM unlocked_content WHERE user_id = $1 AND content_asset_id = $2`, [pu.id, a.id]);
+    assert.ok(uc);
+    // Pulsar dos veces no genera ni cobra otra vez
+    await press(btn.callback_data, P);
+    assert.equal(generated, 1);
+    assert.equal(await getBalance(pu.id), 60);
+
+    // Fallo del generador: devuelve créditos y ofrece galería
+    photoIO.generate = async () => { throw new Error("timeout"); };
+    n = calls.length;
+    await sendText("send me a photo at the gym", P);
+    const b2 = calls.slice(n).find((c) => c.method === "sendMessage")!.payload.reply_markup.inline_keyboard.flat().find((b: any) => b.callback_data.startsWith("pg:"));
+    n = calls.length;
+    await press(b2.callback_data, P);
+    assert.equal(await getBalance(pu.id), 60, "créditos devueltos");
+    assert.ok(textsSince(n).some((t) => /no se te ha cobrado nada/.test(t)));
+
+    // Resultado rechazado por la revisión: devuelve créditos y registra alerta
+    photoIO.generate = async () => fake;
+    photoIO.checkImage = async () => ({ ok: false, details: { adult_25_plus: false } });
+    n = calls.length;
+    await sendText("una foto en un café", P);
+    const b3 = calls.slice(n).find((c) => c.method === "sendMessage")!.payload.reply_markup.inline_keyboard.flat().find((b: any) => b.callback_data.startsWith("pg:"));
+    await press(b3.callback_data, P);
+    assert.equal(await getBalance(pu.id), 60);
+    const flag = await one<any>(`SELECT * FROM safety_flags WHERE user_id = $1 AND kind = 'photo_output_rejected'`, [pu.id]);
+    assert.ok(flag);
+
+    // Generador desactivado: ofrece directamente la galería
+    photoIO.enabled = () => false;
+    n = calls.length;
+    await sendText("mándame una foto", P);
+    assert.ok(textsSince(n).some((t) => /no puedo crear fotos nuevas/.test(t)));
   });
 
   await test("Inglés: usuario con Telegram en inglés recibe todo en inglés (onboarding, menú, IA, tienda, factura)", async () => {

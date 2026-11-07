@@ -169,8 +169,46 @@ function Content({ api, secret }: { api: ApiFn; secret: string }) {
     load();
   }
 
+  async function uploadReference(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg("");
+    const form = new FormData(e.currentTarget);
+    try {
+      const res = await fetch("/api/admin/companions", { method: "POST", body: form, headers: { "x-admin-secret": secret } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setMsg("Foto de referencia guardada. Se usará como avatar en el catálogo y para mantener su cara en las fotos generadas.");
+      (e.target as HTMLFormElement).reset();
+      load();
+    } catch (err: any) {
+      setMsg(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
+      <h2>Foto de referencia de cada companion</h2>
+      <p className="muted">
+        Retrato claro de la cara, vestida y con aspecto adulto. Se usa como avatar en el catálogo y para que las fotos generadas mantengan su cara.
+        Estado: {companions.map((c) => `${c.name} ${c.has_reference ? "✓" : "—"}`).join(" · ")}
+      </p>
+      <form onSubmit={uploadReference}>
+        <div className="row">
+          <select name="companion" required>
+            {companions.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+          </select>
+          <input name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
+        </div>
+        <label className="row">
+          <input name="ai_confirm" type="checkbox" value="yes" required />
+          Confirmo que la imagen es 100 % generada por IA, representa a un personaje ficticio adulto y no se parece a ninguna persona real.
+        </label>
+        <button disabled={busy}>{busy ? "Subiendo…" : "Guardar referencia"}</button>
+      </form>
+
       <h2>Subir contenido</h2>
       <form onSubmit={upload}>
         <div className="row">
@@ -203,12 +241,12 @@ function Content({ api, secret }: { api: ApiFn; secret: string }) {
       {msg && <p className="muted">{msg}</p>}
       <h2>Contenido</h2>
       <table>
-        <thead><tr><th>Companion</th><th>Tier</th><th>Coste</th><th>Descripción</th><th>Ventas</th><th>Créditos</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Companion</th><th>Origen</th><th>Tier</th><th>Coste</th><th>Descripción</th><th>Ventas</th><th>Créditos</th><th>Estado</th></tr></thead>
         <tbody>
           {assets.map((a) => (
             <tr key={a.id}>
-              <td>{a.companion}</td><td>{a.tier}</td><td>{a.credit_cost}</td><td>{a.caption}</td><td>{a.sales}</td><td>{a.credits}</td>
-              <td><button className="ghost" onClick={() => toggle(a.id, !a.active)}>{a.active ? "Activo · desactivar" : "Inactivo · activar"}</button></td>
+              <td>{a.companion}</td><td>{a.source === "generated" ? "Generada en chat" : "Galería"}</td><td>{a.tier}</td><td>{a.credit_cost}</td><td>{a.caption}</td><td>{a.sales}</td><td>{a.credits}</td>
+              <td><button className="ghost" onClick={() => toggle(a.id, !a.active)}>{a.active ? "En galería · retirar" : a.source === "generated" ? "Privada · publicar en galería" : "Inactivo · activar"}</button></td>
             </tr>
           ))}
         </tbody>
