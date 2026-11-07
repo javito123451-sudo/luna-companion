@@ -6,7 +6,7 @@ import { Asset, deliverUnlocked, sendAsset } from "../lib/content";
 import { Companion, generateReply, HistoryMessage } from "../lib/llm";
 import { listActivePacks, packTotal, processSuccessfulPayment, refundPayment, sendPackInvoice, validatePreCheckout } from "../lib/payments";
 import { detectCrisis, detectMinorSignal, detectProhibitedRequest, parseBirthDate } from "../lib/safety";
-import { freeLimitFor, getSettings, legalUrl } from "../lib/settings";
+import { appUrl, freeLimitFor, getSettings, legalUrl } from "../lib/settings";
 import { detectLang, Lang, menuAction, MENUS, tr } from "../lib/texts";
 import {
   canUseContent,
@@ -61,8 +61,36 @@ async function activeCompanion(u: User): Promise<(Companion & { tagline: string 
   return one(`SELECT * FROM companions WHERE id = $1 AND active = 1`, [u.active_companion_id]);
 }
 
+/** Cambia esta versión al sustituir public/welcome-*.jpg para que Telegram no reutilice el banner antiguo. */
+const WELCOME_VERSION = "v1";
+
+/** Envía el banner de marca con un texto; reutiliza el file_id de Telegram tras el primer envío. */
+async function sendBanner(ctx: Ctx, caption: string, reply_markup: any) {
+  const lang = langOf(ctx);
+  const opts = { ...HTML, reply_markup };
+  const base = appUrl();
+  if (base) {
+    const key = `welcome_file_id_${lang}_${WELCOME_VERSION}`;
+    try {
+      const cached = await one<{ value: string }>(`SELECT value FROM app_settings WHERE key = $1`, [key]);
+      const photo = cached?.value ?? `${base}/welcome-${lang}.jpg?${WELCOME_VERSION}`;
+      const m = await ctx.replyWithPhoto(photo, { caption, ...opts });
+      if (!cached && m.photo?.length) {
+        await q(
+          `INSERT INTO app_settings (key, value) VALUES ($1, to_jsonb($2::text)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+          [key, m.photo[m.photo.length - 1].file_id],
+        );
+      }
+      return;
+    } catch (e) {
+      console.error("[banner]", e);
+    }
+  }
+  await ctx.reply(caption, opts);
+}
+
 async function showWelcome(ctx: Ctx) {
-  await ctx.reply(L(ctx).welcome(), { ...HTML, reply_markup: new InlineKeyboard().text(L(ctx).btn.continue, "onb:go") });
+  await sendBanner(ctx, L(ctx).welcome(), new InlineKeyboard().text(L(ctx).btn.continue, "onb:go"));
 }
 
 async function showAgeGate(ctx: Ctx, u: User) {
@@ -70,9 +98,10 @@ async function showAgeGate(ctx: Ctx, u: User) {
   await ctx.reply(L(ctx).ageGate(), { ...HTML, reply_markup: { remove_keyboard: true } });
 }
 
-async function showCatalog(ctx: Ctx) {
+async function showCatalog(ctx: Ctx, opts: { banner?: boolean } = {}) {
   const list = await q<any>(`SELECT * FROM companions WHERE active = 1 ORDER BY sort_order, name`);
-  await ctx.reply(L(ctx).catalogIntro(), { ...HTML, reply_markup: mainMenu(langOf(ctx)) });
+  if (opts.banner) await sendBanner(ctx, L(ctx).catalogIntro(), mainMenu(langOf(ctx)));
+  else await ctx.reply(L(ctx).catalogIntro(), { ...HTML, reply_markup: mainMenu(langOf(ctx)) });
   for (const raw of list) {
     const c = loc(raw, langOf(ctx));
     const kb = new InlineKeyboard().text(L(ctx).btn.talkTo(c.name), `comp:${c.slug}`);
@@ -340,7 +369,7 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
     if (u.is_blocked) return ctx.reply(L(ctx).blocked(), HTML);
     if (!u.age_verified_at) return showWelcome(ctx);
     if (!(await gate(ctx))) return;
-    await showCatalog(ctx);
+    await showCatalog(ctx, { banner: true });
   });
 
   bot.command(["tienda", "shop"], async (ctx) => {
