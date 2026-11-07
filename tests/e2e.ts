@@ -78,7 +78,8 @@ async function paid(payload: string, amount: number, charge: string, id = TG, ui
   } as any);
 }
 const lastOf = (method: string) => [...calls].reverse().find((c) => c.method === method);
-const textsSince = (n: number) => calls.slice(n).filter((c) => c.method === "sendMessage").map((c) => c.payload.text as string);
+const textsSince = (n: number) =>
+  calls.slice(n).filter((c) => c.method === "sendMessage" || (c.method === "sendPhoto" && c.payload.caption)).map((c) => (c.payload.text ?? c.payload.caption) as string);
 const userRow = (id = TG) => one<any>(`SELECT * FROM users WHERE telegram_id = $1`, [id]);
 
 const results: { name: string; ok: boolean; err?: string }[] = [];
@@ -97,6 +98,7 @@ async function main() {
   // Estado limpio de datos de usuario (las companions y packs vienen de la migración).
   await q(`TRUNCATE telegram_updates, support_tickets, safety_flags, unlocked_content, credit_transactions, payments, credit_batches, conversation_messages RESTART IDENTITY CASCADE`);
   await q(`DELETE FROM content_assets`);
+  await q(`DELETE FROM app_settings WHERE key LIKE 'welcome_file_id%'`);
   await q(`DELETE FROM users`);
   await q(`UPDATE app_settings SET value = '5' WHERE key = 'free_messages_per_day'`);
   await q(`UPDATE app_settings SET value = '15' WHERE key = 'free_messages_first_day'`);
@@ -121,6 +123,10 @@ async function main() {
     const n = calls.length;
     await sendText("/start");
     assert.match(textsSince(n)[0], /Bienvenido a Luna Companions/);
+    const banner = calls.slice(n).find((c) => c.method === "sendPhoto")!.payload;
+    assert.match(String(banner.photo), /\/welcome-es\.jpg/);
+    await sendText("/start");
+    assert.match(String(lastOf("sendPhoto")!.payload.photo), /^F\d+$/, "segunda vez reutiliza el file_id");
     await press("onb:go");
     assert.match(textsSince(n).at(-1)!, /mayores de 18/);
     await sendText("hola");
