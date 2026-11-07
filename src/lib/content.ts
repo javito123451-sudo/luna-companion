@@ -48,10 +48,10 @@ export async function processImage(input: Buffer): Promise<{ full: Buffer; previ
   const full = await sharp(input).rotate().resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88, mozjpeg: true }).toBuffer();
   const preview = await sharp(input)
     .rotate()
-    .resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true })
-    .blur(38)
-    .modulate({ brightness: 0.92, saturation: 0.9 })
-    .jpeg({ quality: 70 })
+    .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
+    .blur(14)
+    .modulate({ brightness: 0.97 })
+    .jpeg({ quality: 78 })
     .toBuffer();
   return { full, preview };
 }
@@ -87,6 +87,28 @@ export async function createAsset(input: {
   );
 }
 
+/** Regenera las vistas previas difuminadas de todos los assets (p. ej. tras cambiar el nivel de difuminado). */
+export async function regeneratePreviews(): Promise<number> {
+  const assets = await q<{ id: string; pathname: string; companion_id: string }>(
+    `SELECT id, pathname, companion_id FROM content_assets WHERE pathname IS NOT NULL`,
+  );
+  let done = 0;
+  for (const a of assets) {
+    try {
+      const { preview } = await processImage(await blobIO.get(a.pathname));
+      const p = await blobIO.put(`previews/${a.id}/preview.jpg`, preview, "image/jpeg");
+      await q(
+        `UPDATE content_assets SET preview_pathname = $2, blurred_preview_url = $3, telegram_preview_file_id = NULL, updated_at = now() WHERE id = $1`,
+        [a.id, p.pathname, p.url],
+      );
+      done++;
+    } catch (e) {
+      console.error("[previews] regenerar", a.id, e);
+    }
+  }
+  return done;
+}
+
 /** Foto de referencia de una companion (también se usa como avatar en el catálogo). */
 export async function setCompanionReference(companionId: string, slug: string, file: Buffer) {
   const { full } = await processImage(file);
@@ -114,7 +136,9 @@ export async function sendAsset(
   const msg = await api.sendPhoto(chatId, photo, {
     caption: opts.caption,
     parse_mode: "HTML",
-    has_spoiler: true,
+    // La vista previa ya va difuminada: sin capa extra para que se intuya la foto.
+    // La foto completa sí lleva spoiler, por discreción en pantalla y notificaciones.
+    has_spoiler: !isPreview,
     protect_content: true,
     reply_markup: opts.reply_markup,
   });

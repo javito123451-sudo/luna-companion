@@ -240,6 +240,25 @@ function Content({ api, secret }: { api: ApiFn; secret: string }) {
       </form>
       {msg && <p className="muted">{msg}</p>}
       <h2>Contenido</h2>
+      <div className="row">
+        <button
+          className="ghost"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const r = await api("/api/admin/assets", { method: "PUT" });
+              setMsg(`Vistas previas regeneradas: ${r.regenerated}`);
+            } catch (e: any) {
+              setMsg(e.message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Regenerar vistas previas
+        </button>
+      </div>
       <table>
         <thead><tr><th>Companion</th><th>Origen</th><th>Tier</th><th>Coste</th><th>Descripción</th><th>Ventas</th><th>Créditos</th><th>Estado</th></tr></thead>
         <tbody>

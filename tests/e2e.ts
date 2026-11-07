@@ -97,7 +97,7 @@ async function test(name: string, fn: () => Promise<void>) {
 
 async function main() {
   // Estado limpio de datos de usuario (las companions y packs vienen de la migración).
-  await q(`TRUNCATE telegram_updates, support_tickets, safety_flags, unlocked_content, credit_transactions, payments, credit_batches, conversation_messages RESTART IDENTITY CASCADE`);
+  await q(`TRUNCATE photo_requests, telegram_updates, support_tickets, safety_flags, unlocked_content, credit_transactions, payments, credit_batches, conversation_messages RESTART IDENTITY CASCADE`);
   await q(`DELETE FROM content_assets`);
   await q(`DELETE FROM app_settings WHERE key LIKE 'welcome_file_id%'`);
   await q(`DELETE FROM users`);
@@ -295,7 +295,7 @@ async function main() {
     assert.match(row.storage_url, /^https:\/\/private\.blob\.test\//);
     assert.ok(row.blurred_preview_url && row.preview_pathname && row.pathname);
     const prev = await sharp(blobStore.get(row.preview_pathname)!).metadata();
-    assert.ok((prev.width ?? 0) <= 480);
+    assert.ok((prev.width ?? 0) <= 640);
     const ph = await one<any>(`SELECT COUNT(*)::int AS n FROM content_assets WHERE storage_url LIKE '%placehold.co%'`);
     assert.equal(ph.n, 0);
   });
@@ -306,7 +306,7 @@ async function main() {
     let n = calls.length;
     await sendText("Galería");
     const preview = calls.slice(n).find((c) => c.method === "sendPhoto")!.payload;
-    assert.equal(preview.has_spoiler, true);
+    assert.equal(preview.has_spoiler, false, "la vista previa ya va difuminada");
     assert.equal(preview.protect_content, true);
     assert.match(preview.caption, /26 créditos/);
     n = calls.length;
