@@ -28,7 +28,7 @@ const pages: Record<string, { title: string; en?: boolean; body: () => JSX.Eleme
     body: () => (
       <>
         <h2>1. Quiénes somos</h2>
-        <p>Luna Companions es un servicio de entretenimiento digital que se presta a través de un bot de Telegram.</p>
+        <p>Dreamora es un servicio de entretenimiento digital que se presta a través de un bot de Telegram.</p>
         <Owner />
         <h2>2. Solo para adultos</h2>
         <p>
@@ -149,7 +149,7 @@ const pages: Record<string, { title: string; en?: boolean; body: () => JSX.Eleme
     body: () => (
       <>
         <h2>1. Who we are</h2>
-        <p>Luna Companions is a digital entertainment service provided through a Telegram bot.</p>
+        <p>Dreamora is a digital entertainment service provided through a Telegram bot.</p>
         <Owner en />
         <h2>2. Adults only</h2>
         <p>
@@ -271,7 +271,7 @@ export function generateStaticParams() {
 }
 
 export function generateMetadata({ params }: { params: { slug: string } }) {
-  return { title: `${pages[params.slug]?.title ?? "Legal"} · Luna Companions` };
+  return { title: `${pages[params.slug]?.title ?? "Legal"} · Dreamora` };
 }
 
 export default function LegalPage({ params }: { params: { slug: string } }) {
@@ -279,7 +279,7 @@ export default function LegalPage({ params }: { params: { slug: string } }) {
   if (!page) notFound();
   return (
     <main className="wrap">
-      <div className="brand">Luna Companions</div>
+      <div className="brand">Dreamora</div>
       <h1>{page.title}</h1>
       <p className="muted">{page.en ? `Last updated: ${UPDATED_EN}` : `Última actualización: ${UPDATED}`}</p>
       {page.body()}

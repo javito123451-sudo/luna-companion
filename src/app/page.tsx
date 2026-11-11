@@ -4,7 +4,7 @@ export default function Home() {
   const bot = process.env.NEXT_PUBLIC_BOT_USERNAME;
   return (
     <main className="wrap">
-      <div className="brand">Luna Companions</div>
+      <div className="brand">Dreamora</div>
       <h1>Conversaciones privadas con compañeras creadas con inteligencia artificial.</h1>
       <p className="muted">Servicio exclusivo para mayores de 18 años. Todas las companions son personajes ficticios generados por IA.</p>
       {bot ? (

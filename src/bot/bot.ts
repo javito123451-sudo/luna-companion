@@ -689,10 +689,10 @@ export async function configureBot(api: Api, webhookUrl: string, secret: string 
   await api.setMyCommands(BOT_COMMANDS_EN);
   await api.setMyCommands(BOT_COMMANDS, { language_code: "es" });
   await api.setMyDescription(
-    "Luna Companions: private conversations with companions created with artificial intelligence. Adults only (18+).",
+    "Dreamora: private conversations with companions created with artificial intelligence. Adults only (18+).",
   );
   await api.setMyDescription(
-    "Luna Companions: conversaciones privadas con compañeras creadas con inteligencia artificial. Servicio exclusivo para mayores de 18 años.",
+    "Dreamora: conversaciones privadas con compañeras creadas con inteligencia artificial. Servicio exclusivo para mayores de 18 años.",
     { language_code: "es" },
   );
   await api.setMyShortDescription("AI companions, private conversations. 18+ only.");

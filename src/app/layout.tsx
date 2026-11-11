@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Luna Companions",
+  title: "Dreamora",
   description: "Compañeras de inteligencia artificial para adultos, en Telegram.",
   robots: { index: false, follow: false },
 };

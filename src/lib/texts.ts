@@ -4,7 +4,7 @@
  */
 import { legalUrl } from "./settings";
 
-export const BRAND = "Luna Companions";
+export const BRAND = "Dreamora";
 export type Lang = "es" | "en";
 
 export const detectLang = (code: string | null | undefined): Lang => (code && code.toLowerCase().startsWith("es") ? "es" : "en");

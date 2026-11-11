@@ -54,7 +54,7 @@ export default function Admin() {
   if (!authed) {
     return (
       <main className="wrap admin">
-        <div className="brand">Luna Companions · Admin</div>
+        <div className="brand">Dreamora · Admin</div>
         <h1>Acceso</h1>
         <form
           className="row"
@@ -73,7 +73,7 @@ export default function Admin() {
 
   return (
     <main className="wrap admin">
-      <div className="brand">Luna Companions · Admin</div>
+      <div className="brand">Dreamora · Admin</div>
       <div className="tabs">
         {(["metricas", "contenido", "pagos", "bot"] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "" : "ghost"} onClick={() => setTab(t)}>
