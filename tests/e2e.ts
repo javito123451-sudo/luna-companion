@@ -69,12 +69,12 @@ async function preCheckout(payload: string, amount: number, id = TG, currency = 
     pre_checkout_query: { id: `pcq${updateId}`, from: from(id), currency, total_amount: amount, invoice_payload: payload },
   } as any);
 }
-async function paid(payload: string, amount: number, charge: string, id = TG, uid = updateId++) {
+async function paid(payload: string, amount: number, charge: string, id = TG, uid = updateId++, currency = "XTR") {
   await bot.handleUpdate({
     update_id: uid,
     message: {
       message_id: msgId++, date: 0, chat: chat(id), from: from(id),
-      successful_payment: { currency: "XTR", total_amount: amount, invoice_payload: payload, telegram_payment_charge_id: charge, provider_payment_charge_id: "" },
+      successful_payment: { currency, total_amount: amount, invoice_payload: payload, telegram_payment_charge_id: charge, provider_payment_charge_id: "" },
     },
   } as any);
 }
@@ -222,6 +222,27 @@ async function main() {
     assert.equal(p.status, "paid");
     assert.ok(p.pre_checkout_at && p.paid_at);
     assert.equal(await getBalance(u.id), 330);
+  });
+
+  await test("successful_payment vuelve a validar usuario, importe y moneda antes de acreditar", async () => {
+    await press("buy:starter");
+    const pendingPayload = lastOf("sendInvoice")!.payload.payload;
+    const before = await one<any>(`SELECT COUNT(*)::int AS n FROM credit_batches`);
+
+    await paid(pendingPayload, 100, "stxINVALID-WRONG-USER", 777777);
+    await paid(pendingPayload, 1, "stxINVALID-WRONG-AMOUNT");
+    await paid(pendingPayload, 100, "stxINVALID-WRONG-CURRENCY", TG, updateId++, "EUR");
+
+    const unchanged = await one<any>(`SELECT COUNT(*)::int AS n FROM credit_batches`);
+    const pending = await one<any>(`SELECT status, telegram_payment_charge_id FROM payments WHERE invoice_payload = $1`, [pendingPayload]);
+    assert.equal(unchanged.n, before.n, "ninguna confirmación discordante acredita créditos");
+    assert.equal(pending.status, "pending");
+    assert.equal(pending.telegram_payment_charge_id, null);
+
+    await paid(pendingPayload, 100, "stxVALID-RETRY");
+    const credited = await one<any>(`SELECT status, telegram_payment_charge_id FROM payments WHERE invoice_payload = $1`, [pendingPayload]);
+    assert.equal(credited.status, "paid");
+    assert.equal(credited.telegram_payment_charge_id, "stxVALID-RETRY");
   });
 
   await test("Idempotencia: successful_payment duplicado (mismo charge_id) y reintento del mismo update", async () => {
