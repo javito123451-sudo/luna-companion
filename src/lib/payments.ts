@@ -74,7 +74,8 @@ export async function validatePreCheckout(p: {
 export type PaymentOutcome =
   | { status: "credited"; pack: string; credits: number; balance: number; expires: string; reference: string }
   | { status: "duplicate"; reference: string }
-  | { status: "unknown_payload"; reference: string };
+  | { status: "unknown_payload"; reference: string }
+  | { status: "invalid_payment"; reference: string };
 
 /**
  * successful_payment → en UNA transacción: lote de créditos (12 meses), transacción 'purchase'
@@ -85,12 +86,17 @@ export async function processSuccessfulPayment(p: {
   payload: string;
   chargeId: string;
   totalAmount: number;
+  currency: string;
 }): Promise<PaymentOutcome> {
   const { creditExpiryMonths } = await getSettings();
   return tx(async (c) => {
     const pay = await one<any>(
-      `SELECT p.*, k.name AS pack_name FROM payments p JOIN credit_packs k ON k.id = p.pack_id
-        WHERE p.invoice_payload = $1 FOR UPDATE OF p`,
+      `SELECT p.*, k.name AS pack_name, u.telegram_id
+         FROM payments p
+         JOIN credit_packs k ON k.id = p.pack_id
+         JOIN users u ON u.id = p.user_id
+        WHERE p.invoice_payload = $1
+        FOR UPDATE OF p`,
       [p.payload],
       c,
     );
@@ -101,6 +107,37 @@ export async function processSuccessfulPayment(p: {
     if (pay.status === "paid" || pay.status === "refunded" || pay.telegram_payment_charge_id) {
       return { status: "duplicate", reference: p.chargeId } as const;
     }
+
+    // Defensa en profundidad: no confiar únicamente en el pre_checkout_query.
+    // La confirmación final debe coincidir con la factura persistida.
+    const mismatch =
+      p.currency !== "XTR" ||
+      !p.chargeId ||
+      Number(pay.telegram_id) !== p.telegramId ||
+      Number(pay.stars) !== p.totalAmount ||
+      pay.status !== "pending";
+    if (mismatch) {
+      console.error("[payments] successful_payment no coincide con la factura; requiere revisión", {
+        charge: p.chargeId,
+        payload: p.payload,
+        telegramIdMatches: Number(pay.telegram_id) === p.telegramId,
+        amountMatches: Number(pay.stars) === p.totalAmount,
+        currency: p.currency,
+        status: pay.status,
+      });
+      return { status: "invalid_payment", reference: p.chargeId } as const;
+    }
+
+    const chargeUsed = await one<any>(
+      `SELECT id FROM payments WHERE telegram_payment_charge_id = $1 AND id <> $2`,
+      [p.chargeId, pay.id],
+      c,
+    );
+    if (chargeUsed) {
+      console.error("[payments] charge_id ya asociado a otro pago", { charge: p.chargeId, payload: p.payload });
+      return { status: "invalid_payment", reference: p.chargeId } as const;
+    }
+
     const batch = await grantPurchaseBatch(c, {
       userId: pay.user_id,
       credits: Number(pay.credits),
