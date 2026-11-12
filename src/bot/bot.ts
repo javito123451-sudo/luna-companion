@@ -475,10 +475,11 @@ export function createBot(opts: { token?: string; botInfo?: UserFromGetMe; testE
       payload: sp.invoice_payload,
       chargeId: sp.telegram_payment_charge_id,
       totalAmount: sp.total_amount,
+      currency: sp.currency,
     });
     if (out.status === "credited") {
       await ctx.reply(L(ctx).receipt(out), { ...HTML, reply_markup: mainMenu(langOf(ctx)) });
-    } else if (out.status === "unknown_payload") {
+    } else if (out.status === "unknown_payload" || out.status === "invalid_payment") {
       await ctx.reply(L(ctx).paymentUnknown(out.reference), HTML);
     }
   });
